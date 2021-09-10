@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # Create csv files accepted by Google Suite given Delphos csv files
-# Copyright (C) <year>  <name of author>
+# Copyright (C) 2021 Pablo del Hoyo Abad <pablodelhoyo1314@gmail.com>
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -16,11 +16,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-
+import csv
 import secrets
 import argparse
 
-from typing import Tuple
+from typing import List, Tuple
 
 VOWELS_WITH_ACCENT = "áéíóúÁÉÍÓÚ"
 VOWELS_WITHOUT_ACCENT = "aeiouAEIOU"
@@ -90,6 +90,10 @@ class SchoolPerson:
     def from_csv(cls, csv_data: str):
         raise NotImplementedError("Método implementado en clases descendientes")
 
+    def __repr__(self) -> str:
+        return (f"{self.__class__.__name__}(firstname={self.firstname}, "
+                f"lastname={self.lastname}, email={self.email})")
+
 class Teacher(SchoolPerson):
     
     def __init__(self, firstname: str, lastname: str):
@@ -102,15 +106,24 @@ class Teacher(SchoolPerson):
 
     @classmethod
     def from_csv(cls, csv_data: str):
-        lastname, firstname = csv_data.split(", ")[0]
+        lastname, firstname = csv_data.split(", ")
         return cls(firstname, lastname)
 
-def retrieve_google_csv_data(filename) -> Tuple[str, set]:
+def load_teachers(csv_filename: str) -> List[Teacher]:
+    with open(csv_filename, encoding="latin_1") as csv_file:
+        csv_reader = csv.reader(csv_file)
+        # ignore first row
+        next(csv_reader)
+        return [Teacher.from_csv(data[0]) for data in csv_reader]
+
+def retrieve_google_csv_data(filename: str) -> Tuple[str, set]:
     with open(filename) as csv_filename:
+        csv_reader = csv.reader(csv_filename)
         all_emails = set()
-        fieldnames = next(csv_filename)
-        for row in csv_filename:
-            all_emails.add(row)
+        fieldnames = next(csv_reader)
+
+        for row in csv_reader:
+            all_emails.add(row[2])
     return (fieldnames, all_emails)
 
 
@@ -123,7 +136,11 @@ def main():
     DOMAIN = DOMAIN.format(args.domain)
     PATH = PATH.format(args.year)
 
-    
+    fieldname, all_emails = retrieve_google_csv_data(args.csv_google)
+
+    if args.profesores:
+        print(load_teachers(args.profesores))
+
     
 
 if __name__ == "__main__":
