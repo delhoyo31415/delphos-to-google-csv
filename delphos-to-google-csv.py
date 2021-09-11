@@ -25,8 +25,8 @@ import os
 
 from typing import Dict, List, Tuple, Set, Any
 
-VOWELS_WITH_ACCENT = "áéíóúÁÉÍÓÚ"
-VOWELS_WITHOUT_ACCENT = "aeiouAEIOU"
+INVALID_LETTERS = "áéíóúñÁÉÍÓÚÑ"
+REPLACEMENT_LETTERS = "aeiounAEIOUN"
 
 PATH = "/Curso {}/"
 DOMAIN = "@{}"
@@ -77,8 +77,8 @@ def random_number_only_password(digits) -> str:
     return password
 
 def remove_accent(letter) -> str:
-    if letter in VOWELS_WITH_ACCENT:
-        return VOWELS_WITHOUT_ACCENT[VOWELS_WITH_ACCENT.index(letter)]
+    if letter in INVALID_LETTERS:
+        return REPLACEMENT_LETTERS[INVALID_LETTERS.index(letter)]
     return letter
 
 def remove_all_accents(word) -> str:
