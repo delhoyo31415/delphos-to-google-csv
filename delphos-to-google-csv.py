@@ -45,10 +45,17 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("domain", metavar="dominio", help="Dominio del instituto (ej iesinsti.com)")
     parser.add_argument("year", metavar="año", help="Año del curso académico (ej 2021-2022)")
 
-    parser.add_argument("--profesores", "-p", action="store",
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--profesores", "-p", metavar="profesores", dest="teachers", action="store",
                         help="Nombre archivo de profesores de delphos (csv)")
-    parser.add_argument("--output", "-o", action="store", default="profes.csv",
-                        help="Nombre del csv con los nuevos profesores")
+    group.add_argument("--alumnos", "-a", metavar="alumnos",
+                            dest="students", nargs="?", action="store", const="alumnos-delphos",
+                            help=("Nombre del directorio donde se guardan los alumnos de Delphos"
+                                    " (ej alumnos-delphos)"))
+
+    parser.add_argument("--output", "-o", action="store", metavar="nombre-salida",
+                        help=("Nombre del archivo de salida (directorio en el caso de estudiantes y"
+                                " csv para profesores)"))
 
     args = parser.parse_args()
 
@@ -161,10 +168,11 @@ def main():
 
     fieldnames, all_names = retrieve_google_csv_data(args.csv_google)
 
-    if args.profesores:
-        all_teachers = load_teachers(args.profesores)
-        create_teacher_csv(all_teachers, args.output, fieldnames, all_names)
-    
+    if args.teachers:
+        all_teachers = load_teachers(args.teachers)
+        create_teacher_csv(all_teachers, args.output or "profes.csv", fieldnames, all_names)
+    elif args.students:
+        print(args.students)
 
 if __name__ == "__main__":
     main()
