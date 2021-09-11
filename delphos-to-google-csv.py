@@ -48,17 +48,24 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("domain", metavar="dominio", help="Dominio del instituto (ej iesinsti.com)")
     parser.add_argument("year", metavar="año", help="Año del curso académico (ej 2021-2022)")
 
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--profesores", "-p", metavar="profesores", dest="teachers", action="store",
-                        help="Nombre archivo de profesores de delphos (csv)")
-    group.add_argument("--alumnos", "-a", metavar="alumnos",
-                            dest="students", nargs="?", action="store", const="alumnos-delphos",
-                            help=("Nombre del directorio donde se guardan los alumnos de Delphos"
-                                    " (ej alumnos-delphos)"))
+    subparser = parser.add_subparsers(dest="action")
 
-    parser.add_argument("--output", "-o", action="store", metavar="nombre-salida",
-                        help=("Nombre del archivo de salida (directorio en el caso de estudiantes y"
-                                " csv para profesores)"))
+    teachers_parser = subparser.add_parser("generar-profesores")
+    teachers_parser.add_argument("teacher_csv_file", metavar="csv-profesores",
+                                help="Nombre del archivo csv de profesores generado por Delphos")
+    teachers_parser.add_argument("--salida", "-s", metavar="nombre-salida", dest="output", action="store",
+                                    default="profes_nuevos.csv",
+                                    help="Nombre de salida del archivo csv con los"
+                                            "nuevos profesores (defecto profes_nuevos.csv)")
+
+    students_parser = subparser.add_parser("generar-alumnos")
+    students_parser.add_argument("course", metavar="curso", help="Curso del que se desea generar un csv. Debe estar incluido"
+                                    "en el directorio de alumnos")
+    students_parser.add_argument("org_path", metavar="ruta", help="Ruta en la organización. No hay que incluir /")
+    students_parser.add_argument("--directorio", "-d", dest="students_directory", action="store", default="alumnos-delphos",
+                                    help="Directorio donde se encuentran todos los csvs descargados de Delphos")
+    students_parser.add_argument("--salida", "-s", metavar="nombre-salida", dest="output", action="store",
+                                    help="Nombre de salida del csv que contiene los datos de la clase seleccionada")
 
     args = parser.parse_args()
 
@@ -116,7 +123,7 @@ class Teacher(SchoolPerson):
     def __init__(self, firstname: str, lastname: str):
         super().__init__(firstname, lastname)
         self.email = self.email.format(self.build_email_user())
-        self.org_path_unit += "/Profesores"
+        self.org_path_unit += "Profesores"
 
     def build_email_user(self) -> str:
         first_surname = self.lastname.split()[0]
@@ -172,24 +179,16 @@ def write_teachers_csv(teachers: List[Teacher], csv_filename: str,
                 print(f"Creando {teacher} en {teacher.org_path_unit}")
                 csv_writer.writerow(teacher.as_csv_dict())
 
-def write_students_csvs(course_to_student: Dict[str, Student], directory: str,
-                        fieldnames: str, all_names: Set[str]):
-
-    if not os.path.isdir(directory):
-        print(f"Creando {directory}")
-        os.mkdir(directory)
-
-    for course, students in course_to_student.items():
-        filename = os.path.join(directory, course + ".csv")
-        print(f"Creando archivo {filename}")
-
-        with open(filename, "w") as csv_file:
-            csv_writer = csv.DictWriter(csv_file, fieldnames)
-            csv_writer.writeheader()
-            for student in students:
-                if student.fullname not in all_names:
-                    print(f"Creando estudiante {student} en {student.org_path_unit}")
-                    csv_writer.writerow(student.as_csv_dict())
+def write_student_course_csv(course_students: List[Student], org_path: str,
+                            fieldnames: str, all_names: str, filename: str):
+    with open(filename, "w") as csv_file:
+        csv_writer = csv.DictWriter(csv_file, fieldnames)
+        csv_writer.writeheader()
+        for student in course_students:
+            if student.fullname not in all_names:
+                student.org_path_unit += org_path
+                print(f"Creando {student} en {student.org_path_unit}")
+                csv_writer.writerow(student.as_csv_dict())
 
 def get_student_csv_filenames(directory: str) -> List[str]:
     return [os.path.join(directory, file) for file in os.listdir(directory) if file.endswith(".csv")]
@@ -241,13 +240,16 @@ def main():
 
     fieldnames, all_names = get_google_csv_data(args.csv_google)
 
-    if args.teachers:
-        all_teachers = load_teachers(args.teachers)
-        write_teachers_csv(all_teachers, args.output or "profes.csv", fieldnames, all_names)
-    elif args.students:
-        files_path = get_student_csv_filenames(args.students)
+    if args.action == "generar-profesores":
+        all_teachers = load_teachers(args.teacher_csv_file)
+        write_teachers_csv(all_teachers, args.output, fieldnames, all_names)
+    elif args.action == "generar-alumnos":
+        files_path = get_student_csv_filenames(args.students_directory)
         course_to_students = load_students(files_path)
-        write_students_csvs(course_to_students, args.output or "alumnos-nuevos", fieldnames, all_names)
 
+        filename = args.output or args.course + ".csv"
+        write_student_course_csv(
+            course_to_students[args.course], args.org_path, fieldnames, all_names, filename
+        )
 if __name__ == "__main__":
     main()
