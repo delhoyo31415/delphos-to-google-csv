@@ -120,7 +120,7 @@ class Teacher(SchoolPerson):
 
     def build_email_user(self) -> str:
         first_surname = self.lastname.split()[0]
-        return self.firstname[0].lower() + remove_all_accents(first_surname).lower()
+        return remove_all_accents(self.firstname[0].lower() + first_surname.lower())
 
     @classmethod
     def from_csv(cls, csv_data: str) -> Teacher:
@@ -142,7 +142,7 @@ class Student(SchoolPerson):
 
     def build_email_user(self) -> str:
         first_surname = self.lastname.split()[0]
-        user_name = self.firstname[0].lower() + remove_all_accents(first_surname).lower()
+        user_name = remove_all_accents(self.firstname[0].lower() + first_surname.lower())
         # add the two last digit of the enrollment id. I did not choose this criteria to create emails. Someone
         # before me did it.
         user_name += self.enrollment_id[-2:]
