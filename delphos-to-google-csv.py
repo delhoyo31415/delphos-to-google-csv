@@ -16,11 +16,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from __future__ import annotations
+
 import csv
 import secrets
 import argparse
+import os
 
-from typing import Dict, List, Tuple, Set
+from typing import Dict, List, Tuple, Set, Any
 
 VOWELS_WITH_ACCENT = "áéíóúÁÉÍÓÚ"
 VOWELS_WITHOUT_ACCENT = "aeiouAEIOU"
@@ -100,15 +103,11 @@ class SchoolPerson:
         raise NotImplementedError("Método implementado en clases descendientes")
 
     @classmethod
-    def from_csv(cls, csv_data: str) -> str:
+    def from_csv(cls, csv_data: Any) -> SchoolPerson:
         raise NotImplementedError("Método implementado en clases descendientes")
 
     def __str__(self) -> str:
         return f"{self.firstname} {self.lastname} ({self.email})"
-
-    def __repr__(self) -> str:
-        return (f"{self.__class__.__name__}(firstname={self.firstname}, "
-                f"lastname={self.lastname}, email={self.email})")
 
 class Teacher(SchoolPerson):
     
@@ -121,11 +120,46 @@ class Teacher(SchoolPerson):
         return self.firstname[0].lower() + remove_all_accents(first_surname).lower()
 
     @classmethod
-    def from_csv(cls, csv_data: str):
+    def from_csv(cls, csv_data: str) -> Teacher:
         lastname, firstname = csv_data.split(", ")
         return cls(firstname.strip(), lastname.strip())
 
-def create_teacher_csv(teachers: List[Teacher], csv_filename: str,
+    def __repr__(self) -> str:
+        return (f"{self.__class__.__name__}(firstname={self.firstname}, "
+                f"lastname={self.lastname}, email={self.email})")
+
+class Student(SchoolPerson):
+
+    def __init__(self, firstname: str, lastname: str, course: str, enrollment_id: str):
+        super().__init__(firstname, lastname)
+        self.enrollment_id = enrollment_id
+        self.course = course
+
+        self.email = self.email.format(self.build_email_user())
+
+    def build_email_user(self) -> str:
+        first_surname = self.lastname.split()[0]
+        user_name = self.firstname[0].lower() + remove_all_accents(first_surname).lower()
+        # add the two last digit of the enrollment id. I did not choose this criteria to create emails. Someone
+        # before me did it.
+        user_name += self.enrollment_id[-2:]
+        return user_name
+
+    @classmethod
+    def from_csv(cls, csv_data: List[str]) -> Student:
+        lastname, firstname = csv_data[0].split(", ")
+        course = "-".join(csv_data[1].split("º "))
+        enrollment_id = csv_data[2].split("/")[1]
+
+        # strip just in case
+        return cls(firstname.strip(), lastname.strip(), course.strip(), enrollment_id.strip())
+
+    def __repr__(self):
+        return (f"{self.__class__.__name__}(firstname={self.firstname}, "
+                f"lastname={self.lastname}, email={self.email}, course={self.course}, "
+                f"enrollment_id={self.enrollment_id})")
+
+def write_teachers_csv(teachers: List[Teacher], csv_filename: str,
                         fieldnames: str, all_names: Set[str]) -> None:
     with open(csv_filename, "w") as csv_file:
         csv_writer = csv.DictWriter(csv_file, fieldnames)
@@ -135,6 +169,21 @@ def create_teacher_csv(teachers: List[Teacher], csv_filename: str,
                 print(f"Creando {teacher} en {teacher.org_path_unit}")
                 csv_writer.writerow(teacher.as_csv_dict())
 
+def get_student_csv_filenames(directory: str) -> List[str]:
+    return [os.path.join(directory, file) for file in os.listdir(directory) if file.endswith(".csv")]
+
+def load_students(csv_filenames: List[str]) -> Dict[str, Student]:
+    course_to_student = {}
+
+    for csv_filename in csv_filenames:
+        with open(csv_filename, encoding="latin_1") as csv_file:
+            csv_reader = csv.reader(csv_file)
+            next(csv_reader)
+            for row in csv_reader:
+                student = Student.from_csv(row[:3])
+                print(repr(student))
+
+    return course_to_student
 
 def load_teachers(csv_filename: str) -> List[Teacher]:
     with open(csv_filename, encoding="latin_1") as csv_file:
@@ -143,7 +192,7 @@ def load_teachers(csv_filename: str) -> List[Teacher]:
         next(csv_reader)
         return [Teacher.from_csv(data[0]) for data in csv_reader]
 
-def retrieve_google_csv_data(filename: str) -> Tuple[str, Set[str]]:
+def get_google_csv_data(filename: str) -> Tuple[str, Set[str]]:
     with open(filename) as csv_filename:
         csv_reader = csv.reader(csv_filename)
         all_names = set()
@@ -166,13 +215,14 @@ def main():
     DOMAIN = DOMAIN.format(args.domain)
     PATH = PATH.format(args.year)
 
-    fieldnames, all_names = retrieve_google_csv_data(args.csv_google)
+    fieldnames, all_names = get_google_csv_data(args.csv_google)
 
     if args.teachers:
         all_teachers = load_teachers(args.teachers)
-        create_teacher_csv(all_teachers, args.output or "profes.csv", fieldnames, all_names)
+        write_teachers_csv(all_teachers, args.output or "profes.csv", fieldnames, all_names)
     elif args.students:
-        print(args.students)
+        files_path = get_student_csv_filenames(args.students)
+        load_students(files_path)
 
 if __name__ == "__main__":
     main()
