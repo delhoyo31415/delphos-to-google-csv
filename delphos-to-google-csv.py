@@ -65,7 +65,9 @@ def get_args() -> argparse.Namespace:
     return args
 
 def random_number_only_password(digits) -> str:
-    return "".join([str(secrets.randbelow(10)) for _ in range(digits)])
+    password = str(1 + secrets.randbelow(9))
+    password += "".join([str(secrets.randbelow(10)) for _ in range(digits - 1)])
+    return password
 
 def remove_accent(letter) -> str:
     if letter in VOWELS_WITH_ACCENT:
@@ -114,6 +116,7 @@ class Teacher(SchoolPerson):
     def __init__(self, firstname: str, lastname: str):
         super().__init__(firstname, lastname)
         self.email = self.email.format(self.build_email_user())
+        self.org_path_unit += "/Profesores"
 
     def build_email_user(self) -> str:
         first_surname = self.lastname.split()[0]
@@ -169,6 +172,25 @@ def write_teachers_csv(teachers: List[Teacher], csv_filename: str,
                 print(f"Creando {teacher} en {teacher.org_path_unit}")
                 csv_writer.writerow(teacher.as_csv_dict())
 
+def write_students_csvs(course_to_student: Dict[str, Student], directory: str,
+                        fieldnames: str, all_names: Set[str]):
+
+    if not os.path.isdir(directory):
+        print(f"Creando {directory}")
+        os.mkdir(directory)
+
+    for course, students in course_to_student.items():
+        filename = os.path.join(directory, course + ".csv")
+        print(f"Creando archivo {filename}")
+
+        with open(filename, "w") as csv_file:
+            csv_writer = csv.DictWriter(csv_file, fieldnames)
+            csv_writer.writeheader()
+            for student in students:
+                if student.fullname not in all_names:
+                    print(f"Creando estudiante {student} en {student.org_path_unit}")
+                    csv_writer.writerow(student.as_csv_dict())
+
 def get_student_csv_filenames(directory: str) -> List[str]:
     return [os.path.join(directory, file) for file in os.listdir(directory) if file.endswith(".csv")]
 
@@ -181,7 +203,9 @@ def load_students(csv_filenames: List[str]) -> Dict[str, Student]:
             next(csv_reader)
             for row in csv_reader:
                 student = Student.from_csv(row[:3])
-                print(repr(student))
+                if student.course not in course_to_student:
+                    course_to_student[student.course] = []
+                course_to_student[student.course].append(student)
 
     return course_to_student
 
@@ -222,7 +246,8 @@ def main():
         write_teachers_csv(all_teachers, args.output or "profes.csv", fieldnames, all_names)
     elif args.students:
         files_path = get_student_csv_filenames(args.students)
-        load_students(files_path)
+        course_to_students = load_students(files_path)
+        write_students_csvs(course_to_students, args.output or "alumnos-nuevos", fieldnames, all_names)
 
 if __name__ == "__main__":
     main()
