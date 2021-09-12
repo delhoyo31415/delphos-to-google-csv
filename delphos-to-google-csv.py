@@ -180,16 +180,24 @@ def write_teachers_csv(teachers: List[Teacher], csv_filename: str,
                 print(f"Creando {teacher} en {teacher.org_path_unit}")
                 csv_writer.writerow(teacher.as_csv_dict())
 
+
 def write_student_course_csv(course_students: List[Student], org_path: str,
                             fieldnames: str, all_names: str, filename: str):
-    with open(filename, "w") as csv_file:
-        csv_writer = csv.DictWriter(csv_file, fieldnames)
-        csv_writer.writeheader()
-        for student in course_students:
-            if student.fullname not in all_names:
+
+    non_existant_students = [student for student in course_students if student.fullname not in all_names]
+
+    if non_existant_students:
+        with open(filename, "w") as csv_file:
+            csv_writer = csv.DictWriter(csv_file, fieldnames)
+            csv_writer.writeheader()
+            for student in non_existant_students:
                 student.org_path_unit += org_path
                 print(f"Creando {student} en {student.org_path_unit}")
                 csv_writer.writerow(student.as_csv_dict())
+    elif course_students:
+        print(f"No hay ningún alumno nuevo de {course_students[0].course}")
+    else:
+        print("ERROR: La lista 'course_students' no tiene ningún estudiante")
 
 def get_student_csv_filenames(directory: str) -> List[str]:
     return [os.path.join(directory, file) for file in os.listdir(directory) if file.endswith(".csv")]
@@ -248,11 +256,14 @@ def main():
         files_path = get_student_csv_filenames(args.students_directory)
         course_to_students = load_students(files_path)
 
+        if not os.path.isdir(args.output):
+            os.mkdir(args.output)
+
         if args.course_unit_csv:
             pass
         else:
             course, unit_path = args.manual
-            filename = course + ".csv"
+            filename = os.path.join(args.output, course + ".csv")
             write_student_course_csv(
                 course_to_students[course], unit_path, fieldnames, all_names, filename
             )
