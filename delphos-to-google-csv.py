@@ -217,6 +217,11 @@ def load_students(csv_filenames: List[str]) -> Dict[str, Student]:
 
     return course_to_student
 
+def load_course_unit_path(csv_filename: str) -> List[Tuple[str, str]]:
+    with open(csv_filename) as csv_file:
+        csv_reader = csv.reader(csv_file)
+        return [(row[1], row[0]) for row in csv_reader]
+
 def load_teachers(csv_filename: str) -> List[Teacher]:
     with open(csv_filename, encoding="latin_1") as csv_file:
         csv_reader = csv.reader(csv_file)
@@ -260,7 +265,20 @@ def main():
             os.mkdir(args.output)
 
         if args.course_unit_csv:
-            pass
+            course_unit_paths = load_course_unit_path(args.course_unit_csv)
+            not_found_units = set()
+
+            for course, unit_path in course_unit_paths:
+                filename = os.path.join(args.output, course + ".csv")
+                if course in course_to_students:
+                    write_student_course_csv(
+                        course_to_students[course], unit_path, fieldnames, all_names, filename
+                    )
+                else:
+                    not_found_units.add(course)
+
+            for not_found_unit in not_found_units:
+                print(f"ERROR: No se ha encontrado el curso {not_found_unit}")
         else:
             course, unit_path = args.manual
             filename = os.path.join(args.output, course + ".csv")
