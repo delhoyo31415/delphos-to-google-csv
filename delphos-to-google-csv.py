@@ -293,7 +293,7 @@ def main():
         else:
             course, unit_path = args.manual
             filename = os.path.join(args.output, course + ".csv")
-            if course not in course_to_students:
+            if course in course_to_students:
                 write_student_course_csv(
                     course_to_students[course], unit_path, fieldnames, all_names, filename
                 )
