@@ -25,8 +25,8 @@ import os
 
 from typing import Dict, List, Tuple, Set, Any
 
-INVALID_LETTERS = "áéíóúñÁÉÍÓÚÑ"
-REPLACEMENT_LETTERS = "aeiounAEIOUN"
+INVALID_CHARACTERS = "áéíóúñÁÉÍÓÚÑ"
+REPLACEMENT_CHARACTERS = "aeiounAEIOUN"
 
 PATH = "/Curso {}/"
 DOMAIN = "@{}"
@@ -52,24 +52,25 @@ def get_args() -> argparse.Namespace:
 
     teachers_parser = subparser.add_parser("generar-profesores")
     teachers_parser.add_argument("teacher_csv_file", metavar="csv-profesores",
-                                help="Nombre del archivo csv de profesores generado por Delphos")
+                        help="Nombre del archivo csv de profesores generado por Delphos")
     teachers_parser.add_argument("--salida", "-s", metavar="nombre-salida", dest="output", action="store",
-                                    default="profes_nuevos.csv",
-                                    help="Nombre de salida del archivo csv con los"
-                                            "nuevos profesores (defecto profes_nuevos.csv)")
+                        default="profes_nuevos.csv",
+                        help="Nombre de salida del archivo csv con los"
+                            "nuevos profesores (defecto profes_nuevos.csv)")
 
     students_parser = subparser.add_parser("generar-alumnos")
-    students_parser.add_argument("course", metavar="curso", help="Curso del que se desea generar un csv. Debe estar incluido"
-                                    "en el directorio de alumnos")
-    students_parser.add_argument("org_path", metavar="ruta", help="Ruta en la organización. No hay que incluir /")
     students_parser.add_argument("--directorio", "-d", dest="students_directory", action="store", default="alumnos-delphos",
-                                    help="Directorio donde se encuentran todos los csvs descargados de Delphos")
+                        help="Directorio donde se encuentran todos los csvs descargados de Delphos")
+    group = students_parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--archivo", "-a", dest="course_unit_csv", action="store",
+                        help="Archivo csv que contiene el curso y la ruta de la organización")
+    group.add_argument("--manual", "-m", nargs=2, action="store",
+                        help="Curso (clase) y ruta de la organización sin incluir /")
     students_parser.add_argument("--salida", "-s", metavar="nombre-salida", dest="output", action="store",
-                                    help="Nombre de salida del csv que contiene los datos de la clase seleccionada")
+                        default="alumnos-nuevos",
+                        help="Nombre de salida de la carpeta donde se guardan todos los csvs de los nuevos alumnos")
 
-    args = parser.parse_args()
-
-    return args
+    return parser.parse_args()
 
 def random_number_only_password(digits) -> str:
     password = str(1 + secrets.randbelow(9))
@@ -77,8 +78,8 @@ def random_number_only_password(digits) -> str:
     return password
 
 def remove_accent(letter) -> str:
-    if letter in INVALID_LETTERS:
-        return REPLACEMENT_LETTERS[INVALID_LETTERS.index(letter)]
+    if letter in INVALID_CHARACTERS:
+        return REPLACEMENT_CHARACTERS[INVALID_CHARACTERS.index(letter)]
     return letter
 
 def remove_all_accents(word) -> str:
@@ -247,9 +248,13 @@ def main():
         files_path = get_student_csv_filenames(args.students_directory)
         course_to_students = load_students(files_path)
 
-        filename = args.output or args.course + ".csv"
-        write_student_course_csv(
-            course_to_students[args.course], args.org_path, fieldnames, all_names, filename
-        )
+        if args.course_unit_csv:
+            pass
+        else:
+            course, unit_path = args.manual
+            filename = course + ".csv"
+            write_student_course_csv(
+                course_to_students[course], unit_path, fieldnames, all_names, filename
+            )
 if __name__ == "__main__":
     main()
