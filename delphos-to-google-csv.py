@@ -23,13 +23,14 @@ import secrets
 import argparse
 import os
 
-from typing import Dict, List, Tuple, Set, Any
+from typing import Dict, List, Mapping, Tuple, Set, Any
 
 INVALID_CHARACTERS = "áéíóúñÁÉÍÓÚÑ"
 REPLACEMENT_CHARACTERS = "aeiounAEIOUN"
 
 PATH = "/Curso {}/"
 DOMAIN = "@{}"
+CURRENT_COURSE = ""
 
 FIRSTNAME = "First Name [Required]"
 LASTNAME = "Last Name [Required]"
@@ -39,10 +40,11 @@ PASSWORD = "Password [Required]"
 CHANGE_PASSWORD = "Change Password at Next Sign-In"
 
 RESET = "\u001b[0m"
-GREEN = "\u001b[32m"
+BRIGHT_YELLOW = "\u001b[33;1m"
+BRIGHT_GREEN = "\u001b[32;1m"
 BRIGHT_RED = "\u001b[31;1m"
 
-def with_color(text, code):
+def with_color(text: str, code: str) -> str:
     return f"{code}{text}{RESET}"
 
 def get_args() -> argparse.Namespace:
@@ -151,6 +153,7 @@ class Student(SchoolPerson):
     def __init__(self, firstname: str, lastname: str, course: str, enrollment_id: str):
         super().__init__(firstname, lastname)
         self.enrollment_id = enrollment_id
+        self.enrollment_year = enrollment_id.split("/")[0]
         self.course = course
 
         self.email = self.email.format(self.build_email_user())
@@ -167,7 +170,7 @@ class Student(SchoolPerson):
     def from_csv(cls, csv_data: List[str]) -> Student:
         lastname, firstname = csv_data[0].split(", ")
         course = "-".join(csv_data[1].split("º "))
-        enrollment_id = csv_data[2].split("/")[1]
+        enrollment_id = csv_data[2]
 
         # strip just in case
         return cls(firstname.strip(), lastname.strip(), course.strip(), enrollment_id.strip())
@@ -199,10 +202,13 @@ def write_student_course_csv(course_students: List[Student], org_path: str,
             csv_writer.writeheader()
             for student in non_existant_students:
                 student.org_path_unit += org_path
-                print(f"Creando {student} en {student.org_path_unit}")
+                text = f"{student} en {student.org_path_unit}"
+                if student.enrollment_year == CURRENT_COURSE:
+                    text = with_color("[NUEVA MATRÍCULA] ", BRIGHT_GREEN) + text
+                print(text)
                 csv_writer.writerow(student.as_csv_dict())
     elif course_students:
-        print(f"No hay ningún alumno nuevo de {course_students[0].course}")
+        print(with_color(f"No hay ningún alumno nuevo de {course_students[0].course}", BRIGHT_YELLOW))
     else:
         print(with_color("ERROR: La lista 'course_students' no tiene ningún estudiante"), BRIGHT_RED)
 
@@ -251,12 +257,14 @@ def get_google_csv_data(filename: str) -> Tuple[str, Set[str]]:
 
 
 def main():
-    global DOMAIN, PATH
+    global DOMAIN, PATH, CURRENT_COURSE
 
     args = get_args()
 
     # these two global won't change anymore
     DOMAIN = DOMAIN.format(args.domain)
+    # TODO: it is more robust a regex rule for this
+    CURRENT_COURSE = args.year.split("-")[0]
     PATH = PATH.format(args.year)
 
     fieldnames, all_names = get_google_csv_data(args.csv_google)
@@ -273,7 +281,6 @@ def main():
 
         if args.course_unit_csv:
             course_unit_paths = load_course_unit_path(args.course_unit_csv)
-            not_found_units = set()
 
             for course, unit_path in course_unit_paths:
                 filename = os.path.join(args.output, course + ".csv")
@@ -282,15 +289,15 @@ def main():
                         course_to_students[course], unit_path, fieldnames, all_names, filename
                     )
                 else:
-                    not_found_units.add(course)
-
-            for not_found_unit in not_found_units:
-                print(with_color(f"ERROR: No se ha encontrado el curso {not_found_unit}", BRIGHT_RED))
+                    print(with_color(f"ERROR: No se ha encontrado el curso {course}", BRIGHT_RED))
         else:
             course, unit_path = args.manual
             filename = os.path.join(args.output, course + ".csv")
-            write_student_course_csv(
-                course_to_students[course], unit_path, fieldnames, all_names, filename
-            )
+            if course not in course_to_students:
+                write_student_course_csv(
+                    course_to_students[course], unit_path, fieldnames, all_names, filename
+                )
+            else:
+                print(with_color(f"ERROR: No se ha encontrado el curso {course}", BRIGHT_RED))
 if __name__ == "__main__":
     main()
