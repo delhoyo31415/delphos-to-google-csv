@@ -38,6 +38,13 @@ ORG_UNIT_PATH = "Org Unit Path [Required]"
 PASSWORD = "Password [Required]"
 CHANGE_PASSWORD = "Change Password at Next Sign-In"
 
+RESET = "\u001b[0m"
+GREEN = "\u001b[32m"
+BRIGHT_RED = "\u001b[31;1m"
+
+def with_color(text, code):
+    return f"{code}{text}{RESET}"
+
 def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="delphos_google_converter",
@@ -197,7 +204,7 @@ def write_student_course_csv(course_students: List[Student], org_path: str,
     elif course_students:
         print(f"No hay ningún alumno nuevo de {course_students[0].course}")
     else:
-        print("ERROR: La lista 'course_students' no tiene ningún estudiante")
+        print(with_color("ERROR: La lista 'course_students' no tiene ningún estudiante"), BRIGHT_RED)
 
 def get_student_csv_filenames(directory: str) -> List[str]:
     return [os.path.join(directory, file) for file in os.listdir(directory) if file.endswith(".csv")]
@@ -278,7 +285,7 @@ def main():
                     not_found_units.add(course)
 
             for not_found_unit in not_found_units:
-                print(f"ERROR: No se ha encontrado el curso {not_found_unit}")
+                print(with_color(f"ERROR: No se ha encontrado el curso {not_found_unit}", BRIGHT_RED))
         else:
             course, unit_path = args.manual
             filename = os.path.join(args.output, course + ".csv")
