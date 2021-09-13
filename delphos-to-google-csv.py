@@ -23,7 +23,7 @@ import secrets
 import argparse
 import os
 
-from typing import Dict, List, Mapping, Tuple, Set, Any
+from typing import Dict, List, Tuple, Set, Any
 
 INVALID_CHARACTERS = "áéíóúñÁÉÍÓÚÑ"
 REPLACEMENT_CHARACTERS = "aeiounAEIOUN"
