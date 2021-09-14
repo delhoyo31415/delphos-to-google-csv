@@ -22,6 +22,7 @@ import csv
 import secrets
 import argparse
 import os
+import re
 
 from typing import Dict, List, Tuple, Set, Any
 
@@ -43,6 +44,9 @@ RESET = "\u001b[0m"
 BRIGHT_YELLOW = "\u001b[33;1m"
 BRIGHT_GREEN = "\u001b[32;1m"
 BRIGHT_RED = "\u001b[31;1m"
+
+# also matches usernames of the form juan.perez@iesuninstituo.es
+EMAIL_USER_REGEX = re.compile(r"([A-Za-z\.]+)(\d*)@")
 
 def with_color(text: str, code: str) -> str:
     return f"{code}{text}{RESET}"
@@ -118,12 +122,20 @@ class SchoolPerson:
     def fullname(self) -> str:
         return f"{self.firstname} {self.lastname.strip()}"
 
+    def update_email_user(self) -> None:
+        self.email = EMAIL_USER_REGEX.sub(self._new_user_name_email, self.email)
+
     def build_email_user(self) -> str:
         raise NotImplementedError("Método implementado en clases descendientes")
 
     @classmethod
     def from_csv(cls, csv_data: Any) -> SchoolPerson:
         raise NotImplementedError("Método implementado en clases descendientes")
+
+    def _new_user_name_email(self, match: re.Match) -> str:
+        if not match:
+            raise ValueError("Formato de email no ha podido ser reconocido")
+        return ""
 
     def __str__(self) -> str:
         return f"{self.firstname} {self.lastname} ({self.email})"
@@ -143,6 +155,15 @@ class Teacher(SchoolPerson):
     def from_csv(cls, csv_data: str) -> Teacher:
         lastname, firstname = csv_data.split(", ")
         return cls(firstname.strip(), lastname.strip())
+
+    def _new_user_name_email(self, match: re.Match) -> str:
+        super()._new_user_name_email(match)
+
+        main_user_name, last_nums = match.groups()
+
+        if last_nums:
+            f"{main_user_name}{int(last_nums) + 1}@"
+        return f"{main_user_name}2@"
 
     def __repr__(self) -> str:
         return (f"{self.__class__.__name__}(firstname={self.firstname}, "
@@ -166,6 +187,16 @@ class Student(SchoolPerson):
         user_name += self.enrollment_id[-2:]
         return user_name
 
+    def _new_user_name_email(self, match: re.Match):
+        super()._new_user_name_email(match)
+
+        # these rules were imposed to me
+        main_user_name, last_nums = match.groups()
+        next_nums = int(last_nums) + 1
+        if next_nums < 10:
+            next_nums = f"0{next_nums}"
+        return f"{main_user_name}{next_nums}@"
+
     @classmethod
     def from_csv(cls, csv_data: List[str]) -> Student:
         lastname, firstname = csv_data[0].split(", ")
@@ -181,7 +212,7 @@ class Student(SchoolPerson):
                 f"enrollment_id={self.enrollment_id})")
 
 def write_teachers_csv(teachers: List[Teacher], csv_filename: str,
-                        fieldnames: str, all_names: Set[str]) -> None:
+                        fieldnames: str, all_names: Set[str], all_emails: Set[str]) -> None:
     with open(csv_filename, "w") as csv_file:
         csv_writer = csv.DictWriter(csv_file, fieldnames)
         csv_writer.writeheader()
@@ -192,7 +223,7 @@ def write_teachers_csv(teachers: List[Teacher], csv_filename: str,
 
 
 def write_student_course_csv(course_students: List[Student], org_path: str,
-                            fieldnames: str, all_names: str, filename: str):
+                            fieldnames: str, filename: str, all_names: Set[str], all_emails: Set[str]):
 
     non_existant_students = [student for student in course_students if student.fullname not in all_names]
 
@@ -242,19 +273,20 @@ def load_teachers(csv_filename: str) -> List[Teacher]:
         next(csv_reader)
         return [Teacher.from_csv(data[0]) for data in csv_reader]
 
-def get_google_csv_data(filename: str) -> Tuple[str, Set[str]]:
+def get_google_csv_data(filename: str) -> Tuple[str, Set[str], Set[str]]:
     with open(filename) as csv_filename:
         csv_reader = csv.reader(csv_filename)
         all_names = set()
+        all_emails = set()
 
         fieldnames = next(csv_reader)
 
         for row in csv_reader:
             name = f"{row[0].strip()} {row[1].strip()}"
             all_names.add(name)
+            all_emails.add(row[2])
 
-    return (fieldnames, all_names)
-
+    return fieldnames, all_names, all_emails
 
 def main():
     global DOMAIN, PATH, CURRENT_COURSE
@@ -267,11 +299,11 @@ def main():
     CURRENT_COURSE = args.year.split("-")[0]
     PATH = PATH.format(args.year)
 
-    fieldnames, all_names = get_google_csv_data(args.csv_google)
+    fieldnames, all_names, all_emails = get_google_csv_data(args.csv_google)
 
     if args.action == "generar-profesores":
         all_teachers = load_teachers(args.teacher_csv_file)
-        write_teachers_csv(all_teachers, args.output, fieldnames, all_names)
+        write_teachers_csv(all_teachers, args.output, fieldnames, all_names, all_emails)
     elif args.action == "generar-alumnos":
         files_path = get_student_csv_filenames(args.students_directory)
         course_to_students = load_students(files_path)
@@ -286,7 +318,7 @@ def main():
                 filename = os.path.join(args.output, course + ".csv")
                 if course in course_to_students:
                     write_student_course_csv(
-                        course_to_students[course], unit_path, fieldnames, all_names, filename
+                        course_to_students[course], unit_path, fieldnames, filename, all_names, all_emails
                     )
                 else:
                     print(with_color(f"ERROR: No se ha encontrado el curso {course}", BRIGHT_RED))
@@ -295,7 +327,7 @@ def main():
             filename = os.path.join(args.output, course + ".csv")
             if course in course_to_students:
                 write_student_course_csv(
-                    course_to_students[course], unit_path, fieldnames, all_names, filename
+                    course_to_students[course], unit_path, fieldnames, filename, all_names, all_emails
                 )
             else:
                 print(with_color(f"ERROR: No se ha encontrado el curso {course}", BRIGHT_RED))
