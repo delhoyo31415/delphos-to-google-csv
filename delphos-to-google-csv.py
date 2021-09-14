@@ -211,6 +211,13 @@ class Student(SchoolPerson):
                 f"lastname={self.lastname}, email={self.email}, course={self.course}, "
                 f"enrollment_id={self.enrollment_id})")
 
+def change_email_if_needed(person: SchoolPerson, all_emails: Set[str]) -> None:
+    while person.email in all_emails:
+        old_email = person.email
+        person.update_email_user()
+        print(with_color("[AVISO]", BRIGHT_YELLOW) +
+            f" {old_email} ya existe. Cambiándolo a {person.email}")
+
 def write_teachers_csv(teachers: List[Teacher], csv_filename: str,
                         fieldnames: str, all_names: Set[str], all_emails: Set[str]) -> None:
     with open(csv_filename, "w") as csv_file:
@@ -218,6 +225,7 @@ def write_teachers_csv(teachers: List[Teacher], csv_filename: str,
         csv_writer.writeheader()
         for teacher in teachers:
             if teacher.fullname not in all_names:
+                change_email_if_needed(teacher, all_emails)
                 print(f"Creando {teacher} en {teacher.org_path_unit}")
                 csv_writer.writerow(teacher.as_csv_dict())
 
@@ -233,7 +241,9 @@ def write_student_course_csv(course_students: List[Student], org_path: str,
             csv_writer.writeheader()
             for student in non_existant_students:
                 student.org_path_unit += org_path
-                text = f"{student} en {student.org_path_unit}"
+
+                change_email_if_needed(student, all_emails)
+                text = f"Creando {student} en {student.org_path_unit}"
                 if student.enrollment_year == CURRENT_COURSE:
                     text = with_color("[NUEVA MATRÍCULA] ", BRIGHT_GREEN) + text
                 print(text)
