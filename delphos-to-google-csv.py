@@ -69,11 +69,12 @@ class NaiveLogger:
     def __add_and_show(self, msg) -> None:
         print(msg)
         raw = repr(msg)
-        self.messages.append(raw[1:-1])
+        self.messages.append(raw[1:-1] + "\n")
 
     def write_log_file(self, filename):
         without_esc_codes_msgs = [self._ansi_esc_code_regex.sub("", msg) for msg in self.messages]
-        print(without_esc_codes_msgs)
+        with open(filename, "w") as file:
+            file.writelines(without_esc_codes_msgs)
 
 logger = NaiveLogger()
 
@@ -248,7 +249,7 @@ def change_email_if_needed(person: SchoolPerson, all_emails: Set[str]) -> None:
     while person.email in all_emails:
         old_email = person.email
         person.update_email_user()
-        logger.show_warning(f" {old_email} ya existe. Cambiándolo a {person.email}")
+        logger.show_warning(f"{old_email} ya existe. Cambiándolo a {person.email}")
 
 def write_teachers_csv(teachers: List[Teacher], csv_filename: str,
                         fieldnames: str, all_names: Set[str], all_emails: Set[str]) -> None:
@@ -258,8 +259,9 @@ def write_teachers_csv(teachers: List[Teacher], csv_filename: str,
         for teacher in teachers:
             if teacher.fullname not in all_names:
                 change_email_if_needed(teacher, all_emails)
-                logger.show_info(f"Creando {with_color(teacher, BRIGHT_BLUE)}"
-                            f"en {with_color(teacher.org_path_unit)}")
+                logger.show_info(f"Creando {with_color(teacher.fullname, BRIGHT_BLUE)} "
+                                    f"en {with_color(teacher.org_path_unit, BRIGHT_CYAN)}")
+
                 csv_writer.writerow(teacher.as_csv_dict())
 
 def write_student_course_csv(course_students: List[Student], org_path: str,
@@ -377,7 +379,7 @@ def main():
                 logger.show_warning(f"No se ha encontrado el curso {course}")
 
     if args.log_filename:
-        logger.write_log_file("lol")
+        logger.write_log_file(args.log_filename)
 
 if __name__ == "__main__":
     main()
