@@ -44,12 +44,40 @@ RESET = "\u001b[0m"
 BRIGHT_YELLOW = "\u001b[33;1m"
 BRIGHT_GREEN = "\u001b[32;1m"
 BRIGHT_RED = "\u001b[31;1m"
+BRIGHT_CYAN = "\u001b[36;1m"
+BRIGHT_BLUE = "\u001b[34;1m"
 
 # also matches usernames of the form juan.perez@iesuninstituo.es
 EMAIL_USER_REGEX = re.compile(r"([A-Za-z\.]+)(\d*)@")
+ANSI_ESCAPE_CODE_REGEX = re.compile(r"\\x[a-z0-9]+\[\d+;?\d*m")
 
 def with_color(text: str, code: str) -> str:
     return f"{code}{text}{RESET}"
+
+class NaiveLogger:
+
+    def __init__(self):
+        self.messages: List[str] = []
+
+    def show_error(self, msg: str) -> None:
+        self.__add_and_show(with_color(f"[ERROR] {msg}", BRIGHT_RED))
+
+    def show_info(self, msg: str) -> None:
+        self.__add_and_show(msg)
+
+    def show_warning(self, msg: str) -> None:
+        self.__add_and_show(f"{with_color('[AVISO]', BRIGHT_YELLOW)} {msg}")
+
+    def __add_and_show(self, msg) -> None:
+        print(msg)
+        raw = repr(msg)
+        self.messages.append(raw[1:-1])
+
+    def write_log_file(self, filename):
+        without_escape_codes_msgs = [ANSI_ESCAPE_CODE_REGEX.sub("", msg) for msg in self.messages]
+        print(without_escape_codes_msgs)
+
+logger = NaiveLogger()
 
 def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -60,6 +88,10 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("csv_google", metavar="csv-google", help="Nombre del archivo csv de Google Suite")
     parser.add_argument("domain", metavar="dominio", help="Dominio del instituto (ej iesinsti.com)")
     parser.add_argument("year", metavar="año", help="Año del curso académico (ej 2021-2022)")
+    parser.add_argument("--registro", "-r", metavar="nombre-archivo-registro", action="store", dest="log_filename",
+                        help="Nombre del archivo txt con toda la información"
+                                "mostrada en la terminal")
+
 
     subparser = parser.add_subparsers(dest="action")
 
@@ -215,8 +247,7 @@ def change_email_if_needed(person: SchoolPerson, all_emails: Set[str]) -> None:
     while person.email in all_emails:
         old_email = person.email
         person.update_email_user()
-        print(with_color("[AVISO]", BRIGHT_YELLOW) +
-            f" {old_email} ya existe. Cambiándolo a {person.email}")
+        logger.show_warning(f" {old_email} ya existe. Cambiándolo a {person.email}")
 
 def write_teachers_csv(teachers: List[Teacher], csv_filename: str,
                         fieldnames: str, all_names: Set[str], all_emails: Set[str]) -> None:
@@ -226,9 +257,9 @@ def write_teachers_csv(teachers: List[Teacher], csv_filename: str,
         for teacher in teachers:
             if teacher.fullname not in all_names:
                 change_email_if_needed(teacher, all_emails)
-                print(f"Creando {teacher} en {teacher.org_path_unit}")
+                logger.show_info(f"Creando {with_color(teacher, BRIGHT_BLUE)}"
+                            f"en {with_color(teacher.org_path_unit)}")
                 csv_writer.writerow(teacher.as_csv_dict())
-
 
 def write_student_course_csv(course_students: List[Student], org_path: str,
                             fieldnames: str, filename: str, all_names: Set[str], all_emails: Set[str]):
@@ -243,15 +274,17 @@ def write_student_course_csv(course_students: List[Student], org_path: str,
                 student.org_path_unit += org_path
 
                 change_email_if_needed(student, all_emails)
-                text = f"Creando {student} en {student.org_path_unit}"
+                text = f"Creando {with_color(student, BRIGHT_BLUE)} en {with_color(student.org_path_unit, BRIGHT_CYAN)}"
                 if student.enrollment_year == CURRENT_COURSE:
                     text = with_color("[NUEVA MATRÍCULA] ", BRIGHT_GREEN) + text
-                print(text)
+                else:
+                    text = with_color("[CASO EXTRAÑO] ", BRIGHT_YELLOW) + text
+                logger.show_info(text)
                 csv_writer.writerow(student.as_csv_dict())
     elif course_students:
-        print(with_color(f"No hay ningún alumno nuevo de {course_students[0].course}", BRIGHT_YELLOW))
+        logger.show_warning(f"No hay ningún alumno nuevo de {course_students[0].course}")
     else:
-        print(with_color("ERROR: La lista 'course_students' no tiene ningún estudiante"), BRIGHT_RED)
+        logger.show_error("La lista 'course_students' no tiene ningún estudiante")
 
 def get_student_csv_filenames(directory: str) -> List[str]:
     return [os.path.join(directory, file) for file in os.listdir(directory) if file.endswith(".csv")]
@@ -331,7 +364,7 @@ def main():
                         course_to_students[course], unit_path, fieldnames, filename, all_names, all_emails
                     )
                 else:
-                    print(with_color(f"ERROR: No se ha encontrado el curso {course}", BRIGHT_RED))
+                    logger.show_warning(f"No se ha encontrado el curso {course}")
         else:
             course, unit_path = args.manual
             filename = os.path.join(args.output, course + ".csv")
@@ -340,7 +373,10 @@ def main():
                     course_to_students[course], unit_path, fieldnames, filename, all_names, all_emails
                 )
             else:
-                print(with_color(f"ERROR: No se ha encontrado el curso {course}", BRIGHT_RED))
+                logger.show_warning(f"No se ha encontrado el curso {course}")
+
+    if args.log_filename:
+        logger.write_log_file("lol")
 
 if __name__ == "__main__":
     main()
