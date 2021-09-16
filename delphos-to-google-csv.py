@@ -341,5 +341,6 @@ def main():
                 )
             else:
                 print(with_color(f"ERROR: No se ha encontrado el curso {course}", BRIGHT_RED))
+
 if __name__ == "__main__":
     main()

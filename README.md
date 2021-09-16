@@ -59,12 +59,12 @@ Supón que el archivo csv descargado de Google Suite lo renombro a `todos.csv`
 
 * Generar archivo csv del curso 4ºA de la ESO suponiendo que se haya guardado el archivo csv con los alumno de 4º de ESO en el directorio correspondiente (`alumnos-delphos` en este caso) con ruta `4ºA de la ESO` en el directorio `alumnos-nuevos`
     ```
-    /delphos-to-google-csv todos.csv iesuninstituto.es 2021-2022 generar-alumnos -m 4-A "4ºA de la ESO"
+    ./delphos-to-google-csv todos.csv iesuninstituto.es 2021-2022 generar-alumnos -m 4-A "4ºA de la ESO"
     ```
 
 * Generar archivos csv en el directorio `mas-alumnos` a partir de un archivo csv creado por el usuario llamado `unidades.csv`
     ```
-    /delphos-to-google-csv todos.csv iesuninstituto.es 2021-2022 generar-alumnos -a unidades.csv -s mas-alumnos
+    ./delphos-to-google-csv todos.csv iesuninstituto.es 2021-2022 generar-alumnos -a unidades.csv -s mas-alumnos
     ```
 
 ## Licencia
