@@ -47,14 +47,12 @@ BRIGHT_RED = "\u001b[31;1m"
 BRIGHT_CYAN = "\u001b[36;1m"
 BRIGHT_BLUE = "\u001b[34;1m"
 
-# also matches usernames of the form juan.perez@iesuninstituo.es
-EMAIL_USER_REGEX = re.compile(r"([A-Za-z\.]+)(\d*)@")
-ANSI_ESCAPE_CODE_REGEX = re.compile(r"\\x[a-z0-9]+\[\d+;?\d*m")
-
 def with_color(text: str, code: str) -> str:
     return f"{code}{text}{RESET}"
 
 class NaiveLogger:
+
+    _ansi_esc_code_regex = re.compile(r"\\x[a-z0-9]+\[\d+;?\d*m")
 
     def __init__(self):
         self.messages: List[str] = []
@@ -74,8 +72,8 @@ class NaiveLogger:
         self.messages.append(raw[1:-1])
 
     def write_log_file(self, filename):
-        without_escape_codes_msgs = [ANSI_ESCAPE_CODE_REGEX.sub("", msg) for msg in self.messages]
-        print(without_escape_codes_msgs)
+        without_esc_codes_msgs = [self._ansi_esc_code_regex.sub("", msg) for msg in self.messages]
+        print(without_esc_codes_msgs)
 
 logger = NaiveLogger()
 
@@ -132,6 +130,9 @@ def remove_all_accents(word) -> str:
 
 class SchoolPerson:
 
+    # also matches usernames of the form juan.perez@iesuninstituo.es
+    _email_regex = re.compile(r"([A-Za-z\.]+)(\d*)@")
+
     def __init__(self, firstname: str, lastname: str):
         self.firstname = firstname
         self.lastname = lastname
@@ -155,7 +156,7 @@ class SchoolPerson:
         return f"{self.firstname} {self.lastname.strip()}"
 
     def update_email_user(self) -> None:
-        self.email = EMAIL_USER_REGEX.sub(self._new_user_name_email, self.email)
+        self.email = self._email_regex.sub(self._new_user_name_email, self.email)
 
     def build_email_user(self) -> str:
         raise NotImplementedError("Método implementado en clases descendientes")
