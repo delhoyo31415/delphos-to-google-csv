@@ -7,12 +7,15 @@ Python 3.8 o superior. No puedo asegurar que funcione en versiones inforiores.
 
 ## Uso
 ### General
-`./delphos-to-google-csv csv-google dominio año {generar-alumnos, generar-profesores}`
+`./delphos-to-google-csv.py csv-google dominio año [--registro/-r] {generar-alumnos, generar-profesores}`
 
 Tanto si se deseas generar un archivo de csv de profesores o de alumnos, la siguiente información debe estar presente
 * `google-csv`: archivo csv descargado desde Google Suite que contiene todos los usuarios que se encuentran en la plataforma. Google Suite te dará a elegir entre un archivo csv con las columnas indispensables o con todas las columnas. Debes elegir este último.
 * `dominio`: dominio asociado la organización que se tiene dada de alta en Google Suite. Por ejemplo, <span>iesuninstituto.es</span>. Este campo es necesario para generar el correo
 * `año`: curso académico. Información necesaria para generar la dirección de la unidad organizativa. Por ejemplo, 2021-2022.
+
+Opcionalmente puedes incluir
+* `--registro/-r`: Nombre del archivo donde se guardará todo lo mostrado por el script.
 
 A continuación debes elegir entre el subcomando `generar-alumnos` o `generar-profesores` en función del csv que desees crear.
 
@@ -53,18 +56,23 @@ Supón que el archivo csv descargado de Google Suite lo renombro a `todos.csv`
 
 * Generar archivo csv de profesores `profes-nuevos.csv` a partir del archivo descargado de Delphos `profes-delphos.csv`
     ```
-    ./delphos-to-google-csv todos.csv iesuninstituto.es 2021-2022 generar-profesores profes-delphos.csv -s profes-nuevos.csv
+    ./delphos-to-google-csv.py todos.csv iesuninstituto.es 2021-2022 generar-profesores profes-delphos.csv -s profes-nuevos.csv
     ```
 
 
 * Generar archivo csv del curso 4ºA de la ESO suponiendo que se haya guardado el archivo csv con los alumno de 4º de ESO en el directorio correspondiente (`alumnos-delphos` en este caso) con ruta `4ºA de la ESO` en el directorio `alumnos-nuevos`
     ```
-    ./delphos-to-google-csv todos.csv iesuninstituto.es 2021-2022 generar-alumnos -m 4-A "4ºA de la ESO"
+    ./delphos-to-google-csv.py todos.csv iesuninstituto.es 2021-2022 generar-alumnos -m 4-A "4ºA de la ESO"
     ```
 
 * Generar archivos csv en el directorio `mas-alumnos` a partir de un archivo csv creado por el usuario llamado `unidades.csv`
     ```
-    ./delphos-to-google-csv todos.csv iesuninstituto.es 2021-2022 generar-alumnos -a unidades.csv -s mas-alumnos
+    ./delphos-to-google-csv.py todos.csv iesuninstituto.es 2021-2022 generar-alumnos -a unidades.csv -s mas-alumnos
+    ```
+
+* Generar archivo csv de profesores con el nombre por defecto a partir del archivo descargado de Delphos `profes-delphos.csv`. Además todo lo mostrado en pantalla por el script será guardado en `texto.txt`
+    ```
+    ./delphos-to-google-csv.py todos.csv iesuninstituto.es 2021-2022 -r texto.txt generar-profesores profes-delphos.csv
     ```
 
 ## Licencia

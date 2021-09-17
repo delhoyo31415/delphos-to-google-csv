@@ -89,7 +89,7 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("year", metavar="año", help="Año del curso académico (ej 2021-2022)")
     parser.add_argument("--registro", "-r", metavar="nombre-archivo-registro", action="store", dest="log_filename",
                         help="Nombre del archivo txt con toda la información"
-                                "mostrada en la terminal")
+                                " mostrada en la terminal")
 
 
     subparser = parser.add_subparsers(dest="action")
