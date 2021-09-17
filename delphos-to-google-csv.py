@@ -193,7 +193,6 @@ class Teacher(SchoolPerson):
     
     def __init__(self, firstname: str, lastname: str):
         super().__init__(firstname, lastname)
-        self.org_path_unit += "Profesores"
 
     def build_email(self, domain: str) -> None:
         first_surname = self.lastname.split()[0]
@@ -272,6 +271,7 @@ def write_teachers_csv(context: SchoolContext, teachers: List[Teacher], csv_file
         csv_writer.writeheader()
         for teacher in teachers:
             if teacher.fullname not in context.all_names:
+                teacher.org_path_unit = context.org_path_unit + "Profesores"
                 teacher.build_email(context.domain)
                 change_email_if_needed(teacher, context.all_emails)
                 logger.show_info(f"Creando {with_color(teacher.fullname + ' (' + teacher.email + ')', BRIGHT_BLUE)} "
