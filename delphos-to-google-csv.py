@@ -24,6 +24,7 @@ import argparse
 import os
 import re
 
+from dataclasses import dataclass
 from typing import Dict, List, Tuple, Set, Any
 
 INVALID_CHARACTERS = "áéíóúñÁÉÍÓÚÑ"
@@ -128,6 +129,12 @@ def remove_accent(letter) -> str:
 
 def remove_all_accents(word) -> str:
     return "".join(remove_accent(letter) for letter in word)
+
+@dataclass(frozen=True)
+class SchoolContext:
+    domain: str = ""
+    org_path_unit: str = "/"
+    current_year: str = ""
 
 class SchoolPerson:
 
@@ -333,6 +340,12 @@ def get_google_csv_data(filename: str) -> Tuple[str, Set[str], Set[str]]:
             all_emails.add(row[2])
 
     return fieldnames, all_names, all_emails
+
+def create_context(args: argparse.Namespace) -> SchoolContext:
+    domain = args.domain
+    org_unit_path = f"/Curso {args.year}"
+    current_year = re.match(r"(\d+)[-/\s]\d+", args.year).group(1)
+    return SchoolContext(domain, org_unit_path, current_year)
 
 def main():
     global DOMAIN, PATH, CURRENT_COURSE
