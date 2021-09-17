@@ -7,7 +7,7 @@ Python 3.8 o superior. No puedo asegurar que funcione en versiones inforiores.
 
 ## Uso
 ### General
-`./delphos-to-google-csv.py csv-google dominio año [--registro/-r] {generar-alumnos, generar-profesores}`
+`./delphos-to-google-csv.py csv-google dominio año [--registro/-r nombre-registro] {generar-alumnos, generar-profesores}`
 
 Tanto si se deseas generar un archivo de csv de profesores o de alumnos, la siguiente información debe estar presente
 * `google-csv`: archivo csv descargado desde Google Suite que contiene todos los usuarios que se encuentran en la plataforma. Google Suite te dará a elegir entre un archivo csv con las columnas indispensables o con todas las columnas. Debes elegir este último.
@@ -15,7 +15,7 @@ Tanto si se deseas generar un archivo de csv de profesores o de alumnos, la sigu
 * `año`: curso académico. Información necesaria para generar la dirección de la unidad organizativa. Por ejemplo, 2021-2022.
 
 Opcionalmente puedes incluir
-* `--registro/-r`: Nombre del archivo donde se guardará todo lo mostrado por el script.
+* `--registro/-r nombre-registro`: Nombre del archivo donde se guardará todo lo mostrado por el script.
 
 A continuación debes elegir entre el subcomando `generar-alumnos` o `generar-profesores` en función del csv que desees crear.
 
@@ -23,7 +23,7 @@ A continuación debes elegir entre el subcomando `generar-alumnos` o `generar-pr
 `generar-profesores [--salida/-s nombre-salida] csv-profesores`
 * `csv-profesores`: archivo csv descargado de Delphos que contiene los nombres de los profesores. En la primera columna aparecen el nombre y los apellidos del profesor en la forma `primer-apellido segundo-apellido, nombre`. En la segunda y última columna se encuentra la asignatura que imparte el profesor aunque esta información es ignorada por el script.
 
-* `--salida/-s`: argumento opcional con el que se indica el nombre del archivo de salida. Por defecto es `profes.csv`
+* `--salida/-s nombre-salida`: argumento opcional con el que se indica el nombre del archivo de salida. Por defecto es `profes.csv`
 
 Como resultado obtendrás un csv con aquellos profesores que no se encuentren aún en Google Suite en el formato que esta plataforma admite para hacer una subida masiva.
 
@@ -36,7 +36,7 @@ Como resultado obtendrás un csv con aquellos profesores que no se encuentren a�
 
 * `--archivo/-a archivo-curso-ruta`: el problema de la opción `--manual/-m` es que debes ejecutar el script tantas veces como clases tengas, modificando los argumentos posicionales según corresponda. Para evitar ese tedio, puedes crear un archivo csv en el que la primera columna corresponda a la ruta en la que quieres que esté los alumnos de una clase y el identificador de la clase en el formato descrito en el párrafo anterior y pasar el nombre de este como argumento a esta opción.
 
-* `--salida/-s`: este es un argumento opcional. Indica el nombre del directorio donde se guardarán los archivos csv generados. Si no existe el directorio, el script lo creará. Por defecto es `alumnos-nuevos`.
+* `--salida/-s nombre-salida`: este es un argumento opcional. Indica el nombre del directorio donde se guardarán los archivos csv generados. Si no existe el directorio, el script lo creará. Por defecto es `alumnos-nuevos`.
 
 Todos los archivos csv correspondientes a los alumno se generarán dentro del directorio `alumnos-nuevos` o, en caso de que esté presente, el que se haya pasado a `--salida/-s`.
 
