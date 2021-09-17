@@ -24,9 +24,15 @@ import argparse
 import os
 import re
 
-from dataclasses import dataclass
-from typing import Dict, List, Tuple, Set, Any
-
+from dataclasses import dataclass, field
+from typing import (
+    Dict,
+    List,
+    Tuple,
+    Set,
+    Optional,
+    Any
+)
 INVALID_CHARACTERS = "áéíóúñÁÉÍÓÚÑ"
 REPLACEMENT_CHARACTERS = "aeiounAEIOUN"
 
@@ -136,6 +142,10 @@ class SchoolContext:
     org_path_unit: str = "/"
     current_year: str = ""
 
+    fieldnames: Optional[List[str]] = field(default=None, repr=False)
+    all_names: Optional[Set[str]] = field(default=None, repr=False)
+    all_emails: Optional[Set[str]] = field(default=None, repr=False)
+
 class SchoolPerson:
 
     # also matches usernames of the form juan.perez@iesuninstituo.es
@@ -166,7 +176,7 @@ class SchoolPerson:
     def update_email_user(self) -> None:
         self.email = self._email_regex.sub(self._new_user_name_email, self.email)
 
-    def build_email_user(self) -> str:
+    def build_email(self, domain: str) -> None:
         raise NotImplementedError("Método implementado en clases descendientes")
 
     @classmethod
@@ -185,12 +195,12 @@ class Teacher(SchoolPerson):
     
     def __init__(self, firstname: str, lastname: str):
         super().__init__(firstname, lastname)
-        self.email = self.email.format(self.build_email_user())
         self.org_path_unit += "Profesores"
 
-    def build_email_user(self) -> str:
+    def build_email(self, domain: str) -> None:
         first_surname = self.lastname.split()[0]
-        return remove_all_accents(self.firstname[0].lower() + first_surname.lower())
+        username = remove_all_accents(self.firstname[0].lower() + first_surname.lower())
+        self.email = f"{username}@{domain}"
 
     @classmethod
     def from_csv(cls, csv_data: str) -> Teacher:
@@ -218,15 +228,13 @@ class Student(SchoolPerson):
         self.enrollment_year = enrollment_id.split("/")[0]
         self.course = course
 
-        self.email = self.email.format(self.build_email_user())
-
-    def build_email_user(self) -> str:
+    def build_email(self, domain) -> str:
         first_surname = self.lastname.split()[0]
         user_name = remove_all_accents(self.firstname[0].lower() + first_surname.lower())
         # add the two last digit of the enrollment id. I did not choose this criteria to create emails. Someone
         # before me did it.
         user_name += self.enrollment_id[-2:]
-        return user_name
+        self.email = f"{user_name}@{domain}"
 
     def _new_user_name_email(self, match: re.Match):
         super()._new_user_name_email(match)
@@ -258,32 +266,30 @@ def change_email_if_needed(person: SchoolPerson, all_emails: Set[str]) -> None:
         person.update_email_user()
         logger.show_warning(f"{old_email} ya existe. Cambiándolo a {person.email}")
 
-def write_teachers_csv(teachers: List[Teacher], csv_filename: str,
-                        fieldnames: str, all_names: Set[str], all_emails: Set[str]) -> None:
+def write_teachers_csv(context: SchoolContext, teachers: List[Teacher], csv_filename: str) -> None:
     with open(csv_filename, "w") as csv_file:
-        csv_writer = csv.DictWriter(csv_file, fieldnames)
+        csv_writer = csv.DictWriter(csv_file, context.fieldnames)
         csv_writer.writeheader()
         for teacher in teachers:
-            if teacher.fullname not in all_names:
-                change_email_if_needed(teacher, all_emails)
+            if teacher.fullname not in context.all_names:
+                change_email_if_needed(teacher, context.all_emails)
                 logger.show_info(f"Creando {with_color(teacher.fullname, BRIGHT_BLUE)} "
                                     f"en {with_color(teacher.org_path_unit, BRIGHT_CYAN)}")
 
                 csv_writer.writerow(teacher.as_csv_dict())
 
-def write_student_course_csv(course_students: List[Student], org_path: str,
-                            fieldnames: str, filename: str, all_names: Set[str], all_emails: Set[str]):
-
-    non_existant_students = [student for student in course_students if student.fullname not in all_names]
+def write_student_course_csv(context: SchoolContext, course_students: List[Student], org_path: str, filename: str):
+    non_existant_students = [student for student in course_students if student.fullname not in context.all_names]
 
     if non_existant_students:
         with open(filename, "w") as csv_file:
-            csv_writer = csv.DictWriter(csv_file, fieldnames)
+            csv_writer = csv.DictWriter(csv_file, context.fieldnames)
             csv_writer.writeheader()
             for student in non_existant_students:
-                student.org_path_unit += org_path
+                student.build_email(context.domain)
+                student.org_path_unit = context.org_path_unit + org_path
 
-                change_email_if_needed(student, all_emails)
+                change_email_if_needed(student, context.all_emails)
                 text = f"Creando {with_color(student, BRIGHT_BLUE)} en {with_color(student.org_path_unit, BRIGHT_CYAN)}"
                 if student.enrollment_year == CURRENT_COURSE:
                     text = with_color("[NUEVA MATRÍCULA] ", BRIGHT_GREEN) + text
@@ -341,16 +347,21 @@ def get_google_csv_data(filename: str) -> Tuple[str, Set[str], Set[str]]:
 
     return fieldnames, all_names, all_emails
 
-def create_context(args: argparse.Namespace) -> SchoolContext:
+def create_context(args: argparse.Namespace, google_data) -> SchoolContext:
     domain = args.domain
-    org_unit_path = f"/Curso {args.year}"
+    org_unit_path = f"/Curso {args.year}/"
     current_year = re.match(r"(\d+)[-/\s]\d+", args.year).group(1)
-    return SchoolContext(domain, org_unit_path, current_year)
+
+    fieldnames, all_names, all_emails = google_data
+
+    return SchoolContext(domain, org_unit_path,
+                        current_year, fieldnames, all_names, all_emails)
 
 def main():
     global DOMAIN, PATH, CURRENT_COURSE
 
     args = get_args()
+    context = create_context(args, get_google_csv_data(args.csv_google))
 
     # these two global won't change anymore
     DOMAIN = DOMAIN.format(args.domain)
@@ -358,11 +369,9 @@ def main():
     CURRENT_COURSE = args.year.split("-")[0]
     PATH = PATH.format(args.year)
 
-    fieldnames, all_names, all_emails = get_google_csv_data(args.csv_google)
-
     if args.action == "generar-profesores":
         all_teachers = load_teachers(args.teacher_csv_file)
-        write_teachers_csv(all_teachers, args.output, fieldnames, all_names, all_emails)
+        write_teachers_csv(context, all_teachers, args.output)
     elif args.action == "generar-alumnos":
         files_path = get_student_csv_filenames(args.students_directory)
         course_to_students = load_students(files_path)
@@ -377,8 +386,7 @@ def main():
                 filename = os.path.join(args.output, course + ".csv")
                 if course in course_to_students:
                     write_student_course_csv(
-                        course_to_students[course], unit_path, fieldnames, filename, all_names, all_emails
-                    )
+                        context, course_to_students[course], unit_path, filename)
                 else:
                     logger.show_warning(f"No se ha encontrado el curso {course}")
         else:
@@ -386,8 +394,7 @@ def main():
             filename = os.path.join(args.output, course + ".csv")
             if course in course_to_students:
                 write_student_course_csv(
-                    course_to_students[course], unit_path, fieldnames, filename, all_names, all_emails
-                )
+                    context, course_to_students[course], unit_path, filename)
             else:
                 logger.show_warning(f"No se ha encontrado el curso {course}")
 
