@@ -264,6 +264,8 @@ def change_email_if_needed(person: SchoolPerson, all_emails: Set[str]) -> None:
         person.update_email_user()
         logger.show_warning(f"{old_email} ya existe. Cambiándolo a {person.email}")
 
+    all_emails.add(person.email)
+
 def write_teachers_csv(context: SchoolContext, teachers: List[Teacher], csv_filename: str) -> None:
     with open(csv_filename, "w") as csv_file:
         csv_writer = csv.DictWriter(csv_file, context.fieldnames)
