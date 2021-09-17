@@ -37,8 +37,6 @@ INVALID_CHARACTERS = "áéíóúñÁÉÍÓÚÑ"
 REPLACEMENT_CHARACTERS = "aeiounAEIOUN"
 
 PATH = "/Curso {}/"
-DOMAIN = "@{}"
-CURRENT_COURSE = ""
 
 FIRSTNAME = "First Name [Required]"
 LASTNAME = "Last Name [Required]"
@@ -156,8 +154,8 @@ class SchoolPerson:
         self.lastname = lastname
         self.password = random_number_only_password(8)
         
-        self.email: str = "{}" + DOMAIN
-        self.org_path_unit = PATH
+        self.email: str = ""
+        self.org_path_unit = ""
 
     def as_csv_dict(self) -> Dict[str, str]:
         return {
@@ -236,7 +234,7 @@ class Student(SchoolPerson):
         user_name += self.enrollment_id[-2:]
         self.email = f"{user_name}@{domain}"
 
-    def _new_user_name_email(self, match: re.Match):
+    def _new_user_name_email(self, match: re.Match) -> str:
         super()._new_user_name_email(match)
 
         # these rules were imposed to me
@@ -255,7 +253,7 @@ class Student(SchoolPerson):
         # strip just in case
         return cls(firstname.strip(), lastname.strip(), course.strip(), enrollment_id.strip())
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (f"{self.__class__.__name__}(firstname={self.firstname}, "
                 f"lastname={self.lastname}, email={self.email}, course={self.course}, "
                 f"enrollment_id={self.enrollment_id})")
@@ -272,13 +270,14 @@ def write_teachers_csv(context: SchoolContext, teachers: List[Teacher], csv_file
         csv_writer.writeheader()
         for teacher in teachers:
             if teacher.fullname not in context.all_names:
+                teacher.build_email(context.domain)
                 change_email_if_needed(teacher, context.all_emails)
-                logger.show_info(f"Creando {with_color(teacher.fullname, BRIGHT_BLUE)} "
+                logger.show_info(f"Creando {with_color(teacher.fullname + ' (' + teacher.email + ')', BRIGHT_BLUE)} "
                                     f"en {with_color(teacher.org_path_unit, BRIGHT_CYAN)}")
 
                 csv_writer.writerow(teacher.as_csv_dict())
 
-def write_student_course_csv(context: SchoolContext, course_students: List[Student], org_path: str, filename: str):
+def write_student_course_csv(context: SchoolContext, course_students: List[Student], org_path: str, filename: str) -> None:
     non_existant_students = [student for student in course_students if student.fullname not in context.all_names]
 
     if non_existant_students:
@@ -291,7 +290,7 @@ def write_student_course_csv(context: SchoolContext, course_students: List[Stude
 
                 change_email_if_needed(student, context.all_emails)
                 text = f"Creando {with_color(student, BRIGHT_BLUE)} en {with_color(student.org_path_unit, BRIGHT_CYAN)}"
-                if student.enrollment_year == CURRENT_COURSE:
+                if student.enrollment_year == context.current_year:
                     text = with_color("[NUEVA MATRÍCULA] ", BRIGHT_GREEN) + text
                 else:
                     text = with_color("[CASO EXTRAÑO] ", BRIGHT_YELLOW) + text
@@ -347,7 +346,7 @@ def get_google_csv_data(filename: str) -> Tuple[str, Set[str], Set[str]]:
 
     return fieldnames, all_names, all_emails
 
-def create_context(args: argparse.Namespace, google_data) -> SchoolContext:
+def create_context(args: argparse.Namespace, google_data: Tuple[Set[str], Set[str]]) -> SchoolContext:
     domain = args.domain
     org_unit_path = f"/Curso {args.year}/"
     current_year = re.match(r"(\d+)[-/\s]\d+", args.year).group(1)
@@ -358,16 +357,8 @@ def create_context(args: argparse.Namespace, google_data) -> SchoolContext:
                         current_year, fieldnames, all_names, all_emails)
 
 def main():
-    global DOMAIN, PATH, CURRENT_COURSE
-
     args = get_args()
     context = create_context(args, get_google_csv_data(args.csv_google))
-
-    # these two global won't change anymore
-    DOMAIN = DOMAIN.format(args.domain)
-    # TODO: it is more robust a regex rule for this
-    CURRENT_COURSE = args.year.split("-")[0]
-    PATH = PATH.format(args.year)
 
     if args.action == "generar-profesores":
         all_teachers = load_teachers(args.teacher_csv_file)
@@ -385,16 +376,14 @@ def main():
             for course, unit_path in course_unit_paths:
                 filename = os.path.join(args.output, course + ".csv")
                 if course in course_to_students:
-                    write_student_course_csv(
-                        context, course_to_students[course], unit_path, filename)
+                    write_student_course_csv(context, course_to_students[course], unit_path, filename)
                 else:
                     logger.show_warning(f"No se ha encontrado el curso {course}")
         else:
             course, unit_path = args.manual
             filename = os.path.join(args.output, course + ".csv")
             if course in course_to_students:
-                write_student_course_csv(
-                    context, course_to_students[course], unit_path, filename)
+                write_student_course_csv(context, course_to_students[course], unit_path, filename)
             else:
                 logger.show_warning(f"No se ha encontrado el curso {course}")
 
