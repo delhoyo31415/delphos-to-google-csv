@@ -22,6 +22,7 @@ import csv
 import secrets
 import argparse
 import os
+import sys
 import re
 
 from dataclasses import dataclass, field
@@ -36,7 +37,7 @@ from typing import (
 INVALID_CHARACTERS = "áéíóúñÁÉÍÓÚÑ"
 REPLACEMENT_CHARACTERS = "aeiounAEIOUN"
 
-PATH = "/Curso {}/"
+EXPECTED_COLS_STUDENT = 3
 
 FIRSTNAME = "First Name [Required]"
 LASTNAME = "Last Name [Required]"
@@ -54,6 +55,9 @@ BRIGHT_BLUE = "\u001b[34;1m"
 
 def with_color(text: str, code: str) -> str:
     return f"{code}{text}{RESET}"
+
+class IncorrectCsvValueError(Exception):
+    pass
 
 class NaiveLogger:
 
@@ -201,7 +205,10 @@ class Teacher(SchoolPerson):
 
     @classmethod
     def from_csv(cls, csv_data: str) -> Teacher:
-        lastname, firstname = csv_data.split(", ")
+        name_list = csv_data[0].split(", ")
+        if len(name_list) != 2:
+            raise IncorrectCsvValueError("Nombre formato incorrecto", csv_data[0])
+        lastname, firstname = name_list
         return cls(firstname.strip(), lastname.strip())
 
     def _new_user_name_email(self, match: re.Match) -> str:
@@ -245,8 +252,19 @@ class Student(SchoolPerson):
 
     @classmethod
     def from_csv(cls, csv_data: List[str]) -> Student:
-        lastname, firstname = csv_data[0].split(", ")
-        course = "-".join(csv_data[1].split("º "))
+        if len(csv_data) < EXPECTED_COLS_STUDENT:
+            raise IncorrectCsvValueError("Número de columnas incorrecto", len(csv_data))
+
+        name_list = csv_data[0].split(", ")
+        if len(name_list) != 2:
+            raise IncorrectCsvValueError("Nombre formato incorrecto", csv_data[0])
+        lastname, firstname = name_list
+
+        divide_course_list = csv_data[1].split("º ")
+        if len(divide_course_list) != 2:
+            raise IncorrectCsvValueError("Curso formato incorrecto", csv_data[1])
+        course = "-".join(divide_course_list)
+
         enrollment_id = csv_data[2]
 
         # strip just in case
@@ -314,7 +332,11 @@ def load_students(csv_filenames: List[str]) -> Dict[str, Student]:
             csv_reader = csv.reader(csv_file)
             next(csv_reader)
             for row in csv_reader:
-                student = Student.from_csv(row[:3])
+                try:
+                    student = Student.from_csv(row)
+                except IncorrectCsvValueError as exc:
+                    logger.show_error(f"Valor en csv de estudiante no permitido: {exc.args}")
+                    sys.exit(1)
                 if student.course not in course_to_student:
                     course_to_student[student.course] = []
                 course_to_student[student.course].append(student)
@@ -331,7 +353,11 @@ def load_teachers(csv_filename: str) -> List[Teacher]:
         csv_reader = csv.reader(csv_file)
         # ignore first row
         next(csv_reader)
-        return [Teacher.from_csv(data[0]) for data in csv_reader]
+        try:
+            return [Teacher.from_csv(data) for data in csv_reader]
+        except IncorrectCsvValueError as exc:
+            logger.show_error(f"Valor en csv de estudiante no permitido: {exc.args}")
+            sys.exit(1)
 
 def get_google_csv_data(filename: str) -> Tuple[str, Set[str], Set[str]]:
     with open(filename) as csv_filename:
