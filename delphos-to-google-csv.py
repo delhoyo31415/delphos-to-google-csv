@@ -24,6 +24,7 @@ import argparse
 import os
 import sys
 import re
+import functools
 
 from dataclasses import dataclass, field
 from typing import (
@@ -39,6 +40,8 @@ REPLACEMENT_CHARACTERS = "aeiounAEIOUN"
 LEAVE_PASSWORD_STR = "****"
 
 EXPECTED_COLS_STUDENT = 3
+MINIMUM_ROWS_GOOGLE_CSV = 4
+MAXIMUM_COLS_GOOGLE_CSV = 35
 
 FIRSTNAME = "First Name [Required]"
 LASTNAME = "Last Name [Required]"
@@ -53,6 +56,7 @@ BRIGHT_GREEN = "\u001b[32;1m"
 BRIGHT_RED = "\u001b[31;1m"
 BRIGHT_CYAN = "\u001b[36;1m"
 BRIGHT_BLUE = "\u001b[34;1m"
+BRIGHT_MAGENTA = "\u001b[35;1m"
 
 def with_color(text: str, code: str) -> str:
     return f"{code}{text}{RESET}"
@@ -141,29 +145,31 @@ def remove_all_accents(word) -> str:
 
 @dataclass(frozen=True)
 class SchoolContext:
+    fieldnames: List[str] = field(repr=False)
+    all_google_users: Set[SchoolPerson] = field(default=None, repr=False)
+
     domain: str = ""
     org_path_unit: str = "/"
     current_year: str = ""
 
-    fieldnames: Optional[List[str]] = field(default=None, repr=False)
-    all_names: Optional[Set[str]] = field(default=None, repr=False)
-    all_emails: Optional[Set[str]] = field(default=None, repr=False)
+    @functools.cached_property
+    def all_emails(self) -> Set[str]:
+        return set([user.email for user in self.all_google_users])
 
 class SchoolPerson:
 
     # also matches usernames of the form juan.perez@iesuninstituo.es
     _email_regex = re.compile(r"([A-Za-z\.]+)(\d*)@")
 
-    def __init__(self, firstname: str, lastname: str):
+    def __init__(self, firstname: str, lastname: str, email: Optional[str]=None):
         self.firstname = firstname
         self.lastname = lastname
+        self.email = email
         self.fullname = f"{self.firstname} {self.lastname}"
 
         self._custom_hash = hash(self.__class__.__name__ + self.fullname)
-        self.password = random_number_only_password(8)
         
         self.password = LEAVE_PASSWORD_STR
-        self.email: str = ""
         self.org_path_unit = ""
 
     def as_csv_dict(self) -> Dict[str, str]:
@@ -182,6 +188,17 @@ class SchoolPerson:
 
     def update_email(self) -> None:
         self.email = self._email_regex.sub(self._new_user_name_email, self.email)
+
+    @classmethod
+    def from_google_csv(cls, google_csv_data: List[str]) -> SchoolPerson:
+        if len(google_csv_data) < MINIMUM_ROWS_GOOGLE_CSV:
+            raise IncorrectCsvValueError("Número de columnas en csv de google incorrecto",  {len(google_csv_data)})
+
+        firstname = google_csv_data[0].strip()
+        lastname = google_csv_data[1].strip()
+        email = google_csv_data[2]
+
+        return cls(firstname, lastname, email)
 
     @classmethod
     def from_csv(cls, csv_data: Any) -> SchoolPerson:
@@ -206,9 +223,6 @@ class SchoolPerson:
         return f"{self.firstname} {self.lastname} ({self.email})"
 
 class Teacher(SchoolPerson):
-    
-    def __init__(self, firstname: str, lastname: str):
-        super().__init__(firstname, lastname)
 
     @classmethod
     def from_csv(cls, csv_data: str) -> Teacher:
@@ -238,11 +252,15 @@ class Teacher(SchoolPerson):
 
 class Student(SchoolPerson):
 
-    def __init__(self, firstname: str, lastname: str, course: str, enrollment_id: str):
-        super().__init__(firstname, lastname)
-        self.enrollment_id = enrollment_id
-        self.enrollment_year = enrollment_id.split("/")[0]
+    def __init__(self, firstname: str, lastname: str, email: Optional[str]=None, course: Optional[str]=None,
+                enrollment_id: Optional[str]=None):
+        super().__init__(firstname, lastname, email)
         self.course = course
+        self.enrollment_id = enrollment_id
+        self.enrollment_year: Optional[str] = None
+
+        if self.enrollment_id:
+            self.enrollment_year = enrollment_id.split("/")[0]
 
     def _build_email(self, domain) -> str:
         first_surname = self.lastname.split()[0]
@@ -280,7 +298,9 @@ class Student(SchoolPerson):
         enrollment_id = csv_data[2]
 
         # strip just in case
-        return cls(firstname.strip(), lastname.strip(), course.strip(), enrollment_id.strip())
+        return cls(
+            firstname.strip(), lastname.strip(), course=course.strip(), enrollment_id=enrollment_id.strip()
+        )
 
     def __repr__(self) -> str:
         return (f"{self.__class__.__name__}(firstname={self.firstname}, "
@@ -300,7 +320,7 @@ def write_teachers_csv(context: SchoolContext, teachers: List[Teacher], csv_file
         csv_writer = csv.DictWriter(csv_file, context.fieldnames)
         csv_writer.writeheader()
         for teacher in teachers:
-            if teacher.fullname not in context.all_names:
+            if teacher not in context.all_google_users:
                 teacher.org_path_unit = context.org_path_unit + "Profesores"
                 teacher.generate_account_attributes(context.domain)
                 change_email_if_needed(teacher, context.all_emails)
@@ -310,7 +330,7 @@ def write_teachers_csv(context: SchoolContext, teachers: List[Teacher], csv_file
                 csv_writer.writerow(teacher.as_csv_dict())
 
 def write_student_course_csv(context: SchoolContext, course_students: List[Student], org_path: str, filename: str) -> None:
-    non_existant_students = [student for student in course_students if student.fullname not in context.all_names]
+    non_existant_students = [student for student in course_students if student not in context.all_google_users]
 
     if non_existant_students:
         with open(filename, "w") as csv_file:
@@ -325,7 +345,7 @@ def write_student_course_csv(context: SchoolContext, course_students: List[Stude
                 if student.enrollment_year == context.current_year:
                     text = with_color("[NUEVA MATRÍCULA] ", BRIGHT_GREEN) + text
                 else:
-                    text = with_color("[CASO EXTRAÑO] ", BRIGHT_YELLOW) + text
+                    text = with_color("[CASO EXTRAÑO] ", BRIGHT_MAGENTA) + text
                 logger.show_info(text)
                 csv_writer.writerow(student.as_csv_dict())
     elif course_students:
@@ -347,7 +367,7 @@ def load_students(csv_filenames: List[str]) -> Dict[str, Student]:
                 try:
                     student = Student.from_csv(row)
                 except IncorrectCsvValueError as exc:
-                    logger.show_error(f"Valor en csv de estudiante no permitido: {exc.args}")
+                    logger.show_error(f"Valor en csv de estudiante de delphos no permitido: {exc.args}")
                     sys.exit(1)
                 if student.course not in course_to_student:
                     course_to_student[student.course] = []
@@ -368,33 +388,41 @@ def load_teachers(csv_filename: str) -> List[Teacher]:
         try:
             return [Teacher.from_csv(data) for data in csv_reader]
         except IncorrectCsvValueError as exc:
-            logger.show_error(f"Valor en csv de estudiante no permitido: {exc.args}")
+            logger.show_error(f"Valor en csv de profosor de delphos no permitido: {exc.args}")
             sys.exit(1)
 
-def get_google_csv_data(filename: str) -> Tuple[str, Set[str], Set[str]]:
+def generate_person_from_google(row: List[str]) -> SchoolPerson:
+    try:
+        if len(row) != MAXIMUM_COLS_GOOGLE_CSV:
+            raise IncorrectCsvValueError("Número de columnas en csv de google incorrecto", len(row))
+
+        if row[5].split("/")[-1] == "Profesores":
+            return Teacher.from_google_csv(row)
+        return Student.from_google_csv(row)
+    except IncorrectCsvValueError as exc:
+        logger.show_error(f"Csv incorrecto {exc.args}")
+        sys.exit(1)
+
+def get_google_csv_data(filename: str) -> Tuple[str, Set[SchoolPerson]]:
     with open(filename) as csv_filename:
         csv_reader = csv.reader(csv_filename)
-        all_names = set()
-        all_emails = set()
-
+        all_google_users = set()
         fieldnames = next(csv_reader)
 
         for row in csv_reader:
-            name = f"{row[0].strip()} {row[1].strip()}"
-            all_names.add(name)
-            all_emails.add(row[2])
+            person = generate_person_from_google(row)
+            all_google_users.add(person)
 
-    return fieldnames, all_names, all_emails
+    return fieldnames, all_google_users
 
-def create_context(args: argparse.Namespace, google_data: Tuple[Set[str], Set[str]]) -> SchoolContext:
+def create_context(args: argparse.Namespace, google_data: Tuple[str, Set[SchoolPerson]]) -> SchoolContext:
     domain = args.domain
     org_unit_path = f"/Curso {args.year}/"
     current_year = re.match(r"(\d+)[-/\s]\d+", args.year).group(1)
 
-    fieldnames, all_names, all_emails = google_data
+    fieldnames, all_google_users = google_data
 
-    return SchoolContext(domain, org_unit_path,
-                        current_year, fieldnames, all_names, all_emails)
+    return SchoolContext(fieldnames, all_google_users, domain, org_unit_path, current_year)
 
 def main():
     args = get_args()
