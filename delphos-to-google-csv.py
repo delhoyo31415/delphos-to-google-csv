@@ -220,7 +220,9 @@ class SchoolPerson:
         return self._custom_hash
 
     def __str__(self) -> str:
-        return f"{self.firstname} {self.lastname} ({self.email})"
+        if self.email:
+            return f"{self.fullname} ({self.email})"
+        return self.fullname
 
 class Teacher(SchoolPerson):
 
@@ -329,6 +331,20 @@ def write_teachers_csv(context: SchoolContext, teachers: List[Teacher], csv_file
 
                 csv_writer.writerow(teacher.as_csv_dict())
 
+def write_reallocated_teachers(context: SchoolContext, teachers: List[Teacher], csv_filename: str) -> None:
+    with open(csv_filename, "w") as csv_file:
+        csv_writer = csv.DictWriter(csv_file, context.fieldnames)
+        csv_writer.writeheader()
+
+        for teacher in teachers:
+            teacher.org_path_unit = context.org_path_unit + "Profesores"
+            if teacher not in context.all_google_users:
+                logger.show_warning(f"El profesor {with_color(teacher, BRIGHT_BLUE)} "
+                                    "está en Delphos pero no en Google Suite")
+            logger.show_info(f"Recolocando {with_color(teacher, BRIGHT_BLUE)} en "
+                                f"{with_color(teacher.org_path_unit, BRIGHT_CYAN)}")
+            csv_writer.writerow(teacher.as_csv_dict())
+
 def write_reallocated_students(context: SchoolContext, course_students: List[Student], org_path: str, filename: str) -> None:
     if not course_students:
         return
@@ -340,7 +356,7 @@ def write_reallocated_students(context: SchoolContext, course_students: List[Stu
             student.org_path_unit = context.org_path_unit + org_path
             if student not in context.all_google_users:
                 logger.show_warning(f"El alumno {with_color(student, BRIGHT_BLUE)} de "
-                            f"{with_color(student.course, BRIGHT_CYAN)} está en Delphos pero no en Google Suite")
+                                    f"{with_color(student.course, BRIGHT_CYAN)} está en Delphos pero no en Google Suite")
             logger.show_info(f"Recolocando {with_color(student, BRIGHT_BLUE)} en "
                                 f"{with_color(student.org_path_unit, BRIGHT_CYAN)}")
             csv_writer.writerow(student.as_csv_dict())
