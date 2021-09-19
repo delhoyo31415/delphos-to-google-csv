@@ -36,6 +36,7 @@ from typing import (
 )
 INVALID_CHARACTERS = "áéíóúñÁÉÍÓÚÑ"
 REPLACEMENT_CHARACTERS = "aeiounAEIOUN"
+LEAVE_PASSWORD_STR = "****"
 
 EXPECTED_COLS_STUDENT = 3
 
@@ -156,8 +157,12 @@ class SchoolPerson:
     def __init__(self, firstname: str, lastname: str):
         self.firstname = firstname
         self.lastname = lastname
+        self.fullname = f"{self.firstname} {self.lastname}"
+
+        self._custom_hash = hash(self.__class__.__name__ + self.fullname)
         self.password = random_number_only_password(8)
         
+        self.password = LEAVE_PASSWORD_STR
         self.email: str = ""
         self.org_path_unit = ""
 
@@ -168,27 +173,34 @@ class SchoolPerson:
             EMAIL: self.email,
             PASSWORD: self.password,
             ORG_UNIT_PATH: self.org_path_unit,
-            CHANGE_PASSWORD: "TRUE"
+            CHANGE_PASSWORD: "TRUE" if self.password != LEAVE_PASSWORD_STR else ""
         }
 
-    @property
-    def fullname(self) -> str:
-        return f"{self.firstname} {self.lastname.strip()}"
+    def generate_account_attributes(self, domain: str):
+        self.password = random_number_only_password(8)
+        self.email = self._build_email(domain)
 
-    def update_email_user(self) -> None:
+    def update_email(self) -> None:
         self.email = self._email_regex.sub(self._new_user_name_email, self.email)
-
-    def build_email(self, domain: str) -> None:
-        raise NotImplementedError("Método implementado en clases descendientes")
 
     @classmethod
     def from_csv(cls, csv_data: Any) -> SchoolPerson:
+        raise NotImplementedError("Método implementado en clases descendientes")
+
+    def _build_email(self, domain: str) -> str:
         raise NotImplementedError("Método implementado en clases descendientes")
 
     def _new_user_name_email(self, match: re.Match) -> str:
         if not match:
             raise ValueError("Formato de email no ha podido ser reconocido")
         return ""
+
+    def __eq__(self, other: SchoolPerson) -> bool:
+        # if they are different types of school person then they are not the same
+        return self.__class__ is other.__class__ and self.fullname == other.fullname
+
+    def __hash__(self) -> int:
+        return self._custom_hash
 
     def __str__(self) -> str:
         return f"{self.firstname} {self.lastname} ({self.email})"
@@ -198,11 +210,6 @@ class Teacher(SchoolPerson):
     def __init__(self, firstname: str, lastname: str):
         super().__init__(firstname, lastname)
 
-    def build_email(self, domain: str) -> None:
-        first_surname = self.lastname.split()[0]
-        username = remove_all_accents(self.firstname[0].lower() + first_surname.lower())
-        self.email = f"{username}@{domain}"
-
     @classmethod
     def from_csv(cls, csv_data: str) -> Teacher:
         name_list = csv_data[0].split(", ")
@@ -210,6 +217,11 @@ class Teacher(SchoolPerson):
             raise IncorrectCsvValueError("Nombre formato incorrecto", csv_data[0])
         lastname, firstname = name_list
         return cls(firstname.strip(), lastname.strip())
+
+    def _build_email(self, domain: str) -> None:
+        first_surname = self.lastname.split()[0]
+        username = remove_all_accents(self.firstname[0].lower() + first_surname.lower())
+        return f"{username}@{domain}"
 
     def _new_user_name_email(self, match: re.Match) -> str:
         super()._new_user_name_email(match)
@@ -232,13 +244,13 @@ class Student(SchoolPerson):
         self.enrollment_year = enrollment_id.split("/")[0]
         self.course = course
 
-    def build_email(self, domain) -> str:
+    def _build_email(self, domain) -> str:
         first_surname = self.lastname.split()[0]
         user_name = remove_all_accents(self.firstname[0].lower() + first_surname.lower())
         # add the two last digit of the enrollment id. I did not choose this criteria to create emails. Someone
         # before me did it.
         user_name += self.enrollment_id[-2:]
-        self.email = f"{user_name}@{domain}"
+        return f"{user_name}@{domain}"
 
     def _new_user_name_email(self, match: re.Match) -> str:
         super()._new_user_name_email(match)
@@ -278,7 +290,7 @@ class Student(SchoolPerson):
 def change_email_if_needed(person: SchoolPerson, all_emails: Set[str]) -> None:
     while person.email in all_emails:
         old_email = person.email
-        person.update_email_user()
+        person.update_email()
         logger.show_warning(f"{old_email} ya existe. Cambiándolo a {person.email}")
 
     all_emails.add(person.email)
@@ -290,7 +302,7 @@ def write_teachers_csv(context: SchoolContext, teachers: List[Teacher], csv_file
         for teacher in teachers:
             if teacher.fullname not in context.all_names:
                 teacher.org_path_unit = context.org_path_unit + "Profesores"
-                teacher.build_email(context.domain)
+                teacher.generate_account_attributes(context.domain)
                 change_email_if_needed(teacher, context.all_emails)
                 logger.show_info(f"Creando {with_color(teacher.fullname + ' (' + teacher.email + ')', BRIGHT_BLUE)} "
                                     f"en {with_color(teacher.org_path_unit, BRIGHT_CYAN)}")
@@ -305,8 +317,8 @@ def write_student_course_csv(context: SchoolContext, course_students: List[Stude
             csv_writer = csv.DictWriter(csv_file, context.fieldnames)
             csv_writer.writeheader()
             for student in non_existant_students:
-                student.build_email(context.domain)
                 student.org_path_unit = context.org_path_unit + org_path
+                student.generate_account_attributes(context.domain)
 
                 change_email_if_needed(student, context.all_emails)
                 text = f"Creando {with_color(student, BRIGHT_BLUE)} en {with_color(student.org_path_unit, BRIGHT_CYAN)}"
