@@ -329,6 +329,22 @@ def write_teachers_csv(context: SchoolContext, teachers: List[Teacher], csv_file
 
                 csv_writer.writerow(teacher.as_csv_dict())
 
+def write_reallocated_students(context: SchoolContext, course_students: List[Student], org_path: str, filename: str) -> None:
+    if not course_students:
+        return
+
+    with open(filename, "w") as csv_file:
+        csv_writer = csv.DictWriter(csv_file, context.fieldnames)
+        csv_writer.writeheader()
+        for student in course_students:
+            student.org_path_unit = context.org_path_unit + org_path
+            if student not in context.all_google_users:
+                logger.show_warning(f"El alumno {with_color(student, BRIGHT_BLUE)} de "
+                            f"{with_color(student.course, BRIGHT_CYAN)} está en Delphos pero no en Google Suite")
+            logger.show_info(f"Recolocando {with_color(student, BRIGHT_BLUE)} en "
+                                f"{with_color(student.org_path_unit, BRIGHT_CYAN)}")
+            csv_writer.writerow(student.as_csv_dict())
+
 def write_student_course_csv(context: SchoolContext, course_students: List[Student], org_path: str, filename: str) -> None:
     non_existant_students = [student for student in course_students if student not in context.all_google_users]
 
