@@ -33,7 +33,8 @@ from typing import (
     Tuple,
     Set,
     Optional,
-    Any
+    Any,
+    Callable
 )
 INVALID_CHARACTERS = "áéíóúñÁÉÍÓÚÑ"
 REPLACEMENT_CHARACTERS = "aeiounAEIOUN"
@@ -104,7 +105,9 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("--registro", "-r", metavar="nombre-archivo-registro", action="store", dest="log_filename",
                         help="Nombre del archivo txt con toda la información"
                                 " mostrada en la terminal")
-
+    parser.add_argument("-.colocar", "-c", action="store_true", dest="reallocate",
+                        help="Si está presente esta opción, entonces se generan archivos csv pensados para "
+                        "recolocar a los alumnos que se encuentran en Google Suite")
 
     subparser = parser.add_subparsers(dest="action")
 
@@ -112,9 +115,9 @@ def get_args() -> argparse.Namespace:
     teachers_parser.add_argument("teacher_csv_file", metavar="csv-profesores",
                         help="Nombre del archivo csv de profesores generado por Delphos")
     teachers_parser.add_argument("--salida", "-s", metavar="nombre-salida", dest="output", action="store",
-                        default="profes-nuevos.csv",
+                        default="profes-generados.csv",
                         help="Nombre de salida del archivo csv con los"
-                            "nuevos profesores (defecto profes-nuevos.csv)")
+                            "profesores (defecto profes-generados.csv)")
 
     students_parser = subparser.add_parser("generar-alumnos")
     students_parser.add_argument("--directorio", "-d", dest="students_directory", action="store", default="alumnos-delphos",
@@ -316,6 +319,20 @@ def write_users(users: str, filename: str, fieldnames: List[str]) -> None:
         csv_writer.writeheader()
         csv_writer.writerows(dicts_to_write)
 
+def generate_lost_users(context: SchoolContext, users: List[SchoolPerson], org_path: str) -> List[SchoolPerson]:
+    # @param: users is a list containing instances of just one class
+    lost_users = []
+    if not users:
+        return lost_users
+    list_cls = users[0].__class__
+    for google_user in context.all_google_users:
+        if isinstance(google_user, list_cls) and google_user not in users:
+            google_user.org_path_unit = context.org_path_unit + org_path
+            logger.show_info(f"Dando de baja a {with_color(google_user, BRIGHT_BLUE)} en"
+            f" en {with_color(google_user.org_path_unit, BRIGHT_CYAN)}")
+            lost_users.append(google_user)
+    return lost_users
+
 def change_email_if_needed(person: SchoolPerson, all_emails: Set[str]) -> None:
     while person.email in all_emails:
         old_email = person.email
@@ -324,23 +341,15 @@ def change_email_if_needed(person: SchoolPerson, all_emails: Set[str]) -> None:
 
     all_emails.add(person.email)
 
-def show_reallocated_teachers(context: SchoolContext, teachers: List[Teacher]) -> None:
-    for teacher in teachers:
-        teacher.org_path_unit = context.org_path_unit + "Profesores"
-        if teacher not in context.all_google_users:
-            logger.show_warning(f"El profesor {with_color(teacher, BRIGHT_BLUE)} "
-                                "está en Delphos pero no en Google Suite")
-        logger.show_info(f"Recolocando {with_color(teacher, BRIGHT_BLUE)} en "
-                            f"{with_color(teacher.org_path_unit, BRIGHT_CYAN)}")
-
-def show_reallocated_students(context: SchoolContext, course_students: List[Student], org_path: str) -> None:
-    for student in course_students:
-        student.org_path_unit = context.org_path_unit + org_path
-        if student not in context.all_google_users:
-            logger.show_warning(f"El alumno {with_color(student, BRIGHT_BLUE)} de "
-                                f"{with_color(student.course, BRIGHT_CYAN)} está en Delphos pero no en Google Suite")
-        logger.show_info(f"Recolocando {with_color(student, BRIGHT_BLUE)} en "
-                            f"{with_color(student.org_path_unit, BRIGHT_CYAN)}")
+def generate_reallocated_users(context: SchoolContext, users: List[SchoolPerson], org_path: str,
+                                warning_event: Optional[Callable[[SchoolPerson], None]]=None) -> None:
+    for user in users:
+        user.org_path_unit = context.org_path_unit + org_path
+        if user not in context.all_google_users:
+            if warning_event:
+                warning_event(user)
+        logger.show_info(f"Recolocando {with_color(user, BRIGHT_BLUE)} en"
+                        f"{with_color(user.org_path_unit, BRIGHT_CYAN)}")
 
 def generate_new_teachers(context: SchoolContext, delphos_teachers: List[Teacher]) -> List[Teacher]:
     new_teachers = []
@@ -429,16 +438,19 @@ def load_teachers(csv_filename: str) -> List[Teacher]:
             sys.exit(1)
 
 def generate_person_from_google(row: List[str]) -> SchoolPerson:
+    person = None
     try:
         if len(row) != MAXIMUM_COLS_GOOGLE_CSV:
             raise IncorrectCsvValueError("Número de columnas en csv de google incorrecto", len(row))
-
         if row[5].split("/")[-1] == "Profesores":
-            return Teacher.from_google_csv(row)
-        return Student.from_google_csv(row)
+            person = Teacher.from_google_csv(row)
+        else:
+            person = Student.from_google_csv(row)
     except IncorrectCsvValueError as exc:
         logger.show_error(f"Csv incorrecto {exc.args}")
         sys.exit(1)
+    else:
+        return person
 
 def get_google_csv_data(filename: str) -> Tuple[str, Set[SchoolPerson]]:
     with open(filename) as csv_filename:
@@ -461,36 +473,63 @@ def create_context(args: argparse.Namespace, google_data: Tuple[str, Set[SchoolP
 
     return SchoolContext(fieldnames, all_google_users, domain, org_unit_path, current_year)
 
+def generate_new_teachers_command(args: argparse.Namespace, context: SchoolContext) -> None:
+    all_teachers = load_teachers(args.teacher_csv_file)
+    if args.reallocate:
+        def _warning_func(teacher: Teacher) -> None:
+            logger.show_warning(f"El profesor {with_color(teacher, BRIGHT_BLUE)} está en Delphos pero no en Google Suite")
+
+        generate_reallocated_users(context, all_teachers, "Profesores", _warning_func)
+        write_users(all_teachers, args.output, context.fieldnames)
+
+        lost_teachers = generate_lost_users(context, all_teachers, "Bajas/Profesores")
+        write_users(lost_teachers, "bajas-profesores.csv", context.fieldnames)
+    else:
+        write_new_teachers(context, all_teachers, args.output)
+
+def generate_new_students_command(args: argparse.Namespace, context: SchoolContext,
+                                    course_to_students: Dict[str, Student]) -> None:
+
+    def _warning_func(student: Student) -> None:
+        logger.show_warning(f"El alumno {with_color(student, BRIGHT_BLUE)} de {with_color(student.course, BRIGHT_CYAN)}"
+                                    " está en Delphos pero no en Google Suite")
+
+    def _create_specific_course(course: str, unit_path: str) -> None:
+        filename = os.path.join(args.output, course + ".csv")
+        if course in course_to_students:
+            if args.reallocate:
+                generate_reallocated_users(context, course_to_students[course], unit_path, _warning_func)
+                write_users(course_to_students[course], filename, context.fieldnames)
+            else:
+                write_new_students(context, course_to_students[course], unit_path, filename)
+        else:
+            logger.show_warning(f"No se ha encontrado el curso {course}")
+
+    if args.course_unit_csv:
+        course_unit_paths = load_course_unit_path(args.course_unit_csv)
+        for course, unit_path in course_unit_paths:
+            _create_specific_course(course, unit_path)
+    else:
+        _create_specific_course(*args.manual)
+
+    if args.reallocate:
+        all_students = [student for course in course_to_students for student in course_to_students[course]]
+        lost_students = generate_lost_users(context, all_students, "Bajas/Alumnos")
+        write_users(lost_students, "bajas-alumnos.csv", context.fieldnames)
+
 def main():
     args = get_args()
     context = create_context(args, get_google_csv_data(args.csv_google))
 
     if args.action == "generar-profesores":
-        all_teachers = load_teachers(args.teacher_csv_file)
-        write_new_teachers(context, all_teachers, args.output)
+        generate_new_teachers_command(args, context)
     elif args.action == "generar-alumnos":
         files_path = get_student_csv_filenames(args.students_directory)
         course_to_students = load_students(files_path)
 
         if not os.path.isdir(args.output):
             os.mkdir(args.output)
-
-        if args.course_unit_csv:
-            course_unit_paths = load_course_unit_path(args.course_unit_csv)
-
-            for course, unit_path in course_unit_paths:
-                filename = os.path.join(args.output, course + ".csv")
-                if course in course_to_students:
-                    write_new_students(context, course_to_students[course], unit_path, filename)
-                else:
-                    logger.show_warning(f"No se ha encontrado el curso {course}")
-        else:
-            course, unit_path = args.manual
-            filename = os.path.join(args.output, course + ".csv")
-            if course in course_to_students:
-                write_new_students(context, course_to_students[course], unit_path, filename)
-            else:
-                logger.show_error(f"No se ha encontrado el curso {course}")
+        generate_new_students_command(args, context, course_to_students)
 
     if args.log_filename:
         logger.write_log_file(args.log_filename)
