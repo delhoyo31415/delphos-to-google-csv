@@ -357,23 +357,30 @@ def change_email_if_needed(person: SchoolPerson, all_emails: Set[str]) -> None:
 
     all_emails.add(person.email)
 
-def generate_reallocated_users(context: SchoolContext, users: List[SchoolPerson], org_path: str,
-                                warning_event: Optional[Callable[[SchoolPerson], None]]=None) -> None:
+def generate_reallocated_users(context: SchoolContext, users: List[SchoolPerson], org_path: str) -> None:
+    reallocated_users = []
     for user in users:
         if user not in context.all_google_users:
-            if warning_event:
-                warning_event(user)
+            if isinstance(user, Student):
+                logger.show_warning(f"El alumno {with_color(user, BRIGHT_BLUE)} de {with_color(user.course, BRIGHT_CYAN)}"
+                                    " está en Delphos pero no en Google Suite")
+            else:
+                logger.show_warning(f"El profesor {with_color(user, BRIGHT_BLUE)} está en Delphos pero no en Google Suite")
+
         old_path_unit = user.org_path_unit
         user.org_path_unit = context.org_path_unit + org_path
 
         if old_path_unit and old_path_unit != user.org_path_unit:
             logger.show_info(f"Recolocando {with_color(user, BRIGHT_BLUE)} de {with_color(old_path_unit, BRIGHT_CYAN)} a "
                             f"{with_color(user.org_path_unit, BRIGHT_CYAN)}")
+            reallocated_users.append(user)
         elif old_path_unit == user.org_path_unit:
             logger.show_info(f"{with_color('[YA COLOCADO]', BRIGHT_GREEN)} {with_color(user, BRIGHT_BLUE)} en "
                             f"{with_color(user.org_path_unit, BRIGHT_CYAN)}")
         else:
             logger.show_info(f"Añadiendo {with_color(user, BRIGHT_BLUE)} a {with_color(user.org_path_unit, BRIGHT_CYAN)}")
+            reallocated_users.append(user)
+    return reallocated_users
 
 def generate_new_teachers(context: SchoolContext, delphos_teachers: List[Teacher]) -> List[Teacher]:
     new_teachers = []
@@ -502,11 +509,8 @@ def generate_new_teachers_command(args: argparse.Namespace, context: SchoolConte
     context.create_single_reference(all_teachers)
 
     if args.reallocate:
-        def _warning_func(teacher: Teacher) -> None:
-            logger.show_warning(f"El profesor {with_color(teacher, BRIGHT_BLUE)} está en Delphos pero no en Google Suite")
-
-        generate_reallocated_users(context, all_teachers, "Profesores", _warning_func)
-        write_users(all_teachers, args.output, context.fieldnames)
+        reallocated_teachers = generate_reallocated_users(context, all_teachers, "Profesores")
+        write_users(reallocated_teachers, args.output, context.fieldnames)
 
         lost_teachers = generate_lost_users(context, all_teachers, "Bajas/Profesores")
         write_users(lost_teachers, "bajas-profesores.csv", context.fieldnames)
@@ -516,16 +520,12 @@ def generate_new_teachers_command(args: argparse.Namespace, context: SchoolConte
 def generate_new_students_command(args: argparse.Namespace, context: SchoolContext,
                                     course_to_students: Dict[str, Student]) -> None:
 
-    def _warning_func(student: Student) -> None:
-        logger.show_warning(f"El alumno {with_color(student, BRIGHT_BLUE)} de {with_color(student.course, BRIGHT_CYAN)}"
-                                    " está en Delphos pero no en Google Suite")
-
     def _create_specific_course(course: str, unit_path: str) -> None:
         filename = os.path.join(args.output, course + ".csv")
         if course in course_to_students:
             if args.reallocate:
-                generate_reallocated_users(context, course_to_students[course], unit_path, _warning_func)
-                write_users(course_to_students[course], filename, context.fieldnames)
+                reallocated_users = generate_reallocated_users(context, course_to_students[course], unit_path)
+                write_users(reallocated_users, filename, context.fieldnames)
             else:
                 write_new_students(context, course_to_students[course], unit_path, filename)
         else:
