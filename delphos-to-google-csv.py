@@ -146,34 +146,20 @@ def remove_accent(letter) -> str:
 def remove_all_accents(word) -> str:
     return "".join(remove_accent(letter) for letter in word)
 
-@dataclass(frozen=True)
-class SchoolContext:
-    fieldnames: List[str] = field(repr=False)
-    all_google_users: Set[SchoolPerson] = field(default=None, repr=False)
-
-    domain: str = ""
-    org_path_unit: str = "/"
-    current_year: str = ""
-
-    @functools.cached_property
-    def all_emails(self) -> Set[str]:
-        return set([user.email for user in self.all_google_users])
-
 class SchoolPerson:
 
     # also matches usernames of the form juan.perez@iesuninstituo.es
     _email_regex = re.compile(r"([A-Za-z\.]+)(\d*)@")
 
-    def __init__(self, firstname: str, lastname: str, email: Optional[str]=None):
+    def __init__(self, firstname: str, lastname: str, email: Optional[str]=None, org_path_unit: Optional[str]=None):
         self.firstname = firstname
         self.lastname = lastname
         self.email = email
+        self.org_path_unit = org_path_unit
         self.fullname = f"{self.firstname} {self.lastname}"
-
-        self._custom_hash = hash(self.__class__.__name__ + self.fullname)
+        self.is_lost = False
         
         self.password = LEAVE_PASSWORD_STR
-        self.org_path_unit = ""
 
     def as_csv_dict(self) -> Dict[str, str]:
         return {
@@ -200,8 +186,9 @@ class SchoolPerson:
         firstname = google_csv_data[0].strip()
         lastname = google_csv_data[1].strip()
         email = google_csv_data[2]
+        org_path_unit = google_csv_data[5]
 
-        return cls(firstname, lastname, email)
+        return cls(firstname, lastname, email, org_path_unit)
 
     @classmethod
     def from_csv(cls, csv_data: Any) -> SchoolPerson:
@@ -215,17 +202,44 @@ class SchoolPerson:
             raise ValueError("Formato de email no ha podido ser reconocido")
         return ""
 
-    def __eq__(self, other: SchoolPerson) -> bool:
-        # if they are different types of school person then they are not the same
-        return self.__class__ is other.__class__ and self.fullname == other.fullname
-
-    def __hash__(self) -> int:
-        return self._custom_hash
-
     def __str__(self) -> str:
         if self.email:
             return f"{self.fullname} ({self.email})"
         return self.fullname
+
+@dataclass
+class SchoolContext:
+    fieldnames: List[str] = field(repr=False)
+    all_google_users: Set[SchoolPerson] = field(default=None, repr=False)
+
+    domain: str = ""
+    org_path_unit: str = "/"
+    current_year: str = ""
+
+    @functools.cached_property
+    def all_emails(self) -> Set[str]:
+        return set([user.email for user in self.all_google_users])
+
+    def create_single_reference(self, delphos_users: List[SchoolPerson]):
+        """ Create just a single reference for each person """
+
+        same_ref_users = set()
+        name_google_users = {user.fullname: user for user in self.all_google_users}
+        name_delphos_users = {user.fullname: user for user in delphos_users}
+
+        for google_name in name_google_users:
+            google_user = name_google_users[google_name]
+            if google_name in name_delphos_users:
+                base = name_delphos_users[google_name]
+                base.email = google_user.email
+                base.org_path_unit = google_user.org_path_unit
+
+                same_ref_users.add(base)
+            else:
+                google_user.is_lost = True
+                same_ref_users.add(google_user)
+
+        self.all_google_users = same_ref_users
 
 class Teacher(SchoolPerson):
 
@@ -257,9 +271,9 @@ class Teacher(SchoolPerson):
 
 class Student(SchoolPerson):
 
-    def __init__(self, firstname: str, lastname: str, email: Optional[str]=None, course: Optional[str]=None,
-                enrollment_id: Optional[str]=None):
-        super().__init__(firstname, lastname, email)
+    def __init__(self, firstname: str, lastname: str, email: Optional[str]=None, org_path_unit: Optional[str]=None,
+                    course: Optional[str]=None, enrollment_id: Optional[str]=None):
+        super().__init__(firstname, lastname, email, org_path_unit)
         self.course = course
         self.enrollment_id = enrollment_id
         self.enrollment_year: Optional[str] = None
@@ -325,11 +339,13 @@ def generate_lost_users(context: SchoolContext, users: List[SchoolPerson], org_p
     if not users:
         return lost_users
     list_cls = users[0].__class__
+
     for google_user in context.all_google_users:
-        if isinstance(google_user, list_cls) and google_user not in users:
+        if isinstance(google_user, list_cls) and google_user.is_lost:
+            old_org_path = google_user.org_path_unit
             google_user.org_path_unit = context.org_path_unit + org_path
-            logger.show_info(f"Dando de baja a {with_color(google_user, BRIGHT_BLUE)} en"
-            f" en {with_color(google_user.org_path_unit, BRIGHT_CYAN)}")
+            logger.show_info(f"{with_color('[BAJA]', BRIGHT_MAGENTA)} Moviendo {with_color(google_user, BRIGHT_BLUE)}"
+            f" de {with_color(old_org_path, BRIGHT_CYAN)} a {with_color(google_user.org_path_unit, BRIGHT_CYAN)}")
             lost_users.append(google_user)
     return lost_users
 
@@ -344,12 +360,20 @@ def change_email_if_needed(person: SchoolPerson, all_emails: Set[str]) -> None:
 def generate_reallocated_users(context: SchoolContext, users: List[SchoolPerson], org_path: str,
                                 warning_event: Optional[Callable[[SchoolPerson], None]]=None) -> None:
     for user in users:
-        user.org_path_unit = context.org_path_unit + org_path
         if user not in context.all_google_users:
             if warning_event:
                 warning_event(user)
-        logger.show_info(f"Recolocando {with_color(user, BRIGHT_BLUE)} en"
-                        f"{with_color(user.org_path_unit, BRIGHT_CYAN)}")
+        old_path_unit = user.org_path_unit
+        user.org_path_unit = context.org_path_unit + org_path
+
+        if old_path_unit and old_path_unit != user.org_path_unit:
+            logger.show_info(f"Recolocando {with_color(user, BRIGHT_BLUE)} de {with_color(old_path_unit, BRIGHT_CYAN)} a "
+                            f"{with_color(user.org_path_unit, BRIGHT_CYAN)}")
+        elif old_path_unit == user.org_path_unit:
+            logger.show_info(f"{with_color('[YA COLOCADO]', BRIGHT_GREEN)} {with_color(user, BRIGHT_BLUE)} en "
+                            f"{with_color(user.org_path_unit, BRIGHT_CYAN)}")
+        else:
+            logger.show_info(f"Añadiendo {with_color(user, BRIGHT_BLUE)} a {with_color(user.org_path_unit, BRIGHT_CYAN)}")
 
 def generate_new_teachers(context: SchoolContext, delphos_teachers: List[Teacher]) -> List[Teacher]:
     new_teachers = []
@@ -475,6 +499,8 @@ def create_context(args: argparse.Namespace, google_data: Tuple[str, Set[SchoolP
 
 def generate_new_teachers_command(args: argparse.Namespace, context: SchoolContext) -> None:
     all_teachers = load_teachers(args.teacher_csv_file)
+    context.create_single_reference(all_teachers)
+
     if args.reallocate:
         def _warning_func(teacher: Teacher) -> None:
             logger.show_warning(f"El profesor {with_color(teacher, BRIGHT_BLUE)} está en Delphos pero no en Google Suite")
@@ -505,6 +531,9 @@ def generate_new_students_command(args: argparse.Namespace, context: SchoolConte
         else:
             logger.show_warning(f"No se ha encontrado el curso {course}")
 
+    all_students = [student for course in course_to_students for student in course_to_students[course]]
+    context.create_single_reference(all_students)
+
     if args.course_unit_csv:
         course_unit_paths = load_course_unit_path(args.course_unit_csv)
         for course, unit_path in course_unit_paths:
@@ -513,7 +542,6 @@ def generate_new_students_command(args: argparse.Namespace, context: SchoolConte
         _create_specific_course(*args.manual)
 
     if args.reallocate:
-        all_students = [student for course in course_to_students for student in course_to_students[course]]
         lost_students = generate_lost_users(context, all_students, "Bajas/Alumnos")
         write_users(lost_students, "bajas-alumnos.csv", context.fieldnames)
 
