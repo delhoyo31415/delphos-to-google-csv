@@ -444,7 +444,7 @@ def load_students(csv_filenames: List[str]) -> Dict[str, Student]:
                 try:
                     student = Student.from_csv(row)
                 except IncorrectCsvValueError as exc:
-                    logger.show_error(f"Valor en csv de estudiante de delphos no permitido: {exc.args}")
+                    logger.show_error(f"Valor en csv de estudiante {csv_filename} no permitido: {exc.args}")
                     sys.exit(1)
                 if student.course not in course_to_student:
                     course_to_student[student.course] = []
